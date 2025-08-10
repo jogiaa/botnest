@@ -1,0 +1,6 @@
+# Install all dependencies for poc_agno
+-r ../poc_agno/requirements.txt
+
+flask
+# support for web-socket
+flask-socketio
