@@ -9,6 +9,7 @@ MODEL_NAME_GEMMA_3_1B = "gemma3:1b"
 MODEL_NAME_CODE_LLAMA_7b = "codellama:7b"
 MODEL_NAME_CODE_GEMMA_7b = "codegemma:7b"
 MODEL_NAME_DEEPSEEK_R_1_8B = "deepseek-r1:8b"
+MODEL_NAME_GPT_OSS_20B = "gpt-oss:20b"
 
 # --- Enable Debug Mode ---
 enable_debug_mode()

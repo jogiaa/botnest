@@ -1,12 +1,20 @@
+from typing import Optional
+
 from agno.run.response import RunResponse
 from agno.tools.file import FileTools
 from agno.utils.log import logger
 from agno.workflow import Workflow
 
 from poc_agno.agents.code_documenter import code_doc_agent, DocumentedResult
+from poc_agno.utils import Logger, get_builtin_logger
 
 
 class SingleFileDocumentationWorkflow(Workflow):
+
+    def __init__(self, logger: Optional[Logger] = None):
+        super().__init__()
+        self.logger = logger if logger is not None else get_builtin_logger()
+
     description: str = "Sequential file processing workflow: read → capitalize → save"
 
     def run(self, source_file_path: str, destination_file_path: str) -> RunResponse:

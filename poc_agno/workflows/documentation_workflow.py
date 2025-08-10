@@ -1,15 +1,21 @@
+from logging import Logger
 from pathlib import Path
 from pprint import pprint
+from typing import Optional
 
 from agno.run.response import RunResponse
-from agno.utils.log import logger
 from agno.workflow import Workflow
 
 from poc_agno.agents.code_documenter import code_doc_agent, DocumentedResult
 from poc_agno.tools.another_file_reader import AnotherFileProcessor, FileError, FileDetails, FileResult
+from poc_agno.utils import Logger, get_builtin_logger
 
 
 class DocumentationWorkflow(Workflow):
+    def __init__(self, logger: Optional[Logger] = None):
+        super().__init__()
+        self.logger = logger if logger is not None else get_builtin_logger()
+
     description: str = "Sequential file processing workflow: read → document → save"
 
     def run(self, source_file_path: str, destination_file_path: str) -> RunResponse:
