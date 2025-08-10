@@ -13,7 +13,7 @@ import com.poc.koog.DOCUMENTATION_AGENT_SYSTEM_PROMPT
 import com.poc.koog.agent.enableDebugging
 import com.poc.koog.tools.CreateFileTool
 import com.poc.koog.tools.ReadFileTool
-import poc_koog.app.BuildConfig
+import poc_kotlin.koog_agent.BuildConfig
 import kotlin.uuid.ExperimentalUuidApi
 
 private val projectFile = BuildConfig.FILE_TOOL_BASE_PATH

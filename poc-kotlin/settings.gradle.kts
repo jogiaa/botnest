@@ -10,5 +10,5 @@ plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
 }
 
-rootProject.name = "poc-koog"
-include("app")
+rootProject.name = "poc-kotlin"
+include("koog-agent")

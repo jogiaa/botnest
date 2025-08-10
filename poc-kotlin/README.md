@@ -18,5 +18,5 @@
 #### Run the application
 Run the following gradle command to run the application.
 ```bash
-./gradlew :app:run
+./gradlew :koog-agent:run
 ```
