@@ -1,0 +1,14 @@
+# Test requirements for tree_hugger2.0.py unit tests
+# Core dependencies
+tree-sitter>=0.20.4
+tree-sitter-kotlin>=0.0.1
+
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+pytest-mock>=3.10.0
+
+# Development dependencies
+black>=22.0.0
+flake8>=5.0.0
+mypy>=1.0.0 

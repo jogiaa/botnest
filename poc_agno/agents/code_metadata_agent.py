@@ -1,9 +1,13 @@
-import datetime
-from dataclasses import Field
+from datetime import datetime, timezone
+from pprint import pprint
 from textwrap import dedent
 from typing import Literal, Optional, List
 
-from pydantic import BaseModel
+from agno.agent import Agent
+from pydantic import BaseModel, Field
+
+from poc_agno.llm_model_config import code_model
+
 
 class ClassMeta(BaseModel):
     name: str  # Simple class name (e.g., "MyClass")
@@ -16,54 +20,91 @@ class ClassMeta(BaseModel):
     used_in: List[str] = []  # List of other classes that use this one
     external_dependencies: List[str] = []
     defined_in: str  # Relative file path (to disambiguate duplicates)
-    last_updated: datetime = Field(default_factory=datetime.utcnow)
+    last_updated: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     def update_used_in(self, user_class: str):
         if user_class not in self.used_in:
             self.used_in.append(user_class)
 
+
 instruction_v1 = dedent("""
-name: ClassSummaryAgent
-description: |
-  Analyze source files one at a time and maintain a cumulative memory of class-level metadata and inter-class dependencies.
-  For each file, extract structured summaries of relevant types and update existing memory as needed.
+name: class_meta_store_agent
+description: >
+  Analyze a single source file to extract class-level metadata and update the global memory store
+  with accurate summaries, structure, and inter-class dependencies using the ClassMeta model.
 
-goals:
-  - Extract class-level metadata from a single source file (Kotlin/Java style)
-  - Update existing records in memory if a class is referenced ("used")
-  - Maintain a cumulative view of all types across files
+tasks:
 
-rules:
-  - Only consider non-test source files
-  - Do not include code or formatting
-  - Do not summarize test classes, test methods, or test-related files
+  - Parse the source code and extract all top-level types such as:
+      - Class
+      - Interface
+      - Enum
+      - Sealed class
+      - Object
+      - Annotation
 
-for_each_file:
-  extract:
-    - type: |
-        One of: Class, Interface, Enum, SealedClass, Object, Annotation
-    - name: The name of the type
-    - package_name: Package declaration if present
-    - summary: 1–2 sentence explanation of its purpose
-    - extends: List of parent classes (if any)
-    - implements: List of implemented interfaces (if any)
-    - uses: Other internal or external types used within this file
-    - used_in: Automatically update any previously seen class that is used here
-    - external_dependencies: List of third-party or standard library features used
-    - defined_in: Relative file path (e.g., src/main/java/.../Class.kt)
+  - For each extracted type:
+      - Determine its `name` (simple class name, e.g., `MyClass`)
+      - Classify the `type` using standard categories: Class, Interface, Enum, SealedClass, Object, Annotation
+      - Identify the `package_name` (if defined)
+      - Summarize its purpose in 1–2 lines (`summary`)
+      - Extract the names of classes it:
+          - Extends (inherits from)
+          - Implements (interfaces)
+          - Uses (instantiates or calls from other classes)
+      - Identify `external_dependencies`, such as Java/Kotlin standard libraries or third-party imports
+      - Track the file it was defined in as `defined_in` using the provided `filepath`
+      - Set `last_updated` as current UTC timestamp
 
-memory:
-  strategy: |
-    - Keep a running list of previously summarized classes
-    - When a known class is found in `uses`, update its `used_in` list with the current class
-    - Avoid duplicate summaries unless metadata has changed
-    - Use memory to establish a project-wide class dependency graph
+output:
+  - Returns a list of updated or created `ClassMeta` objects from this file
 
-edge_cases:
-  - If a file contains no relevant class-level definitions, return: "Skip"
-  - Ignore import-only references unless the class is clearly used in the body
-
-response_format: Structured YAML or JSON (as configured), one entry per class
+constraints:
+  - Do not include code content or reformat any code
+  - Do not summarize test classes or methods
+  - Ensure consistency in class references (case-sensitive matching)
 
 """)
 
+code_meta_agent = Agent(
+    name="Code Structure Analyzer",
+    role="Analyze source code and summarize structure, dependencies, and libraries used",
+    model=code_model,
+    response_model=ClassMeta,
+    reasoning=True,
+    # debug_mode=True,
+    instructions=instruction_v1
+)
+
+if __name__ == "__main__":
+    prompt = dedent(""" Add this class to the metadata graph
+    package org.koin.example.two
+
+    import kotlin.random.Random
+
+    data class Casing(val capacity:Int) 
+
+    class Processor {
+        private val capacity:Int
+
+        fun startProcessing(type: ProcessorType): Int {
+            return when (type) {
+                Alpha -> calculateDelay(type.numberOfProcessors)
+                Beta -> type.numberOfProcessors
+                Gamma -> type.numberOfProcessors + 10
+            }
+        }
+
+        private fun calculateDelay(processors: Int): Int {
+            return processors * Random.Default.nextInt() 
+        }
+    }
+    """)
+
+    response = code_meta_agent.run(prompt)
+    print("*********************")
+    pprint(response.content)
+
+    print("*********************")
+
+    pprint(response)

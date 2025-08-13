@@ -1,0 +1,97 @@
+name: class_meta_store_agent
+description: >
+  Processes Kotlin or Java source files one at a time to extract structured class metadata
+  (type, name, extends, uses, etc.), and stores or updates this information in ChromaDB.
+  Automatically tracks inter-class references and updates 'used_in' fields.
+
+input:
+  filepath: Path to the source file to process (relative or absolute)
+  content: Raw text content of the source file
+
+steps:
+
+  - name: extract_class_metadata
+    description: Use LLM to extract structured class/interface/object metadata from the source code.
+    uses: openaichat
+    with:
+      system_prompt: |
+        You will be given the source code of a single Kotlin or Java file.
+        Extract all top-level class-like structures (class, interface, enum, object, sealed class, annotation).
+        For each, return:
+          - type (e.g., class, interface, enum, etc.)
+          - name
+          - package_name
+          - summary: a 1-2 line description of its purpose
+          - extends: list of parent classes
+          - implements: list of implemented interfaces
+          - uses: list of other class names referenced
+          - external_dependencies: third-party or built-in libraries used
+          - defined_in: relative path of the file
+        Do NOT include code or formatting.
+        If no class-like structure is present, return "Skip".
+      input: |
+        File path: {{ filepath }}
+        File content:
+        {{ content }}
+
+  - name: save_to_chroma
+    description: Store new class summaries and update `used_in` fields for already known classes.
+    uses: python
+    with: |
+      import chromadb
+      import os
+
+      client = chromadb.PersistentClient(path="/path/to/chroma")
+      collection = client.get_or_create_collection(name="class_metadata")
+
+      import json
+      result = {{ extract_class_metadata.output | tojson }}
+      if result == "Skip":
+          return "No class-like entities found."
+
+      if isinstance(result, dict):
+          entries = [result]
+      else:
+          entries = result
+
+      for entry in entries:
+          class_id = f"{entry['package_name']}.{entry['name']}"
+          filepath = entry["defined_in"]
+
+          # Look for prior class usage
+          existing = collection.get(where={"name": entry["name"]})
+          if existing["metadatas"]:
+              old_meta = existing["metadatas"][0]
+              # Merge used_in values
+              old_used_in = set(old_meta.get("used_in", []))
+              new_used_in = set(entry.get("used_in", []))
+              merged_used_in = list(old_used_in.union(new_used_in))
+
+              # If this class is USED BY another (reverse lookup), update old classes
+              for used_class in entry.get("uses", []):
+                  matches = collection.get(where={"name": used_class})
+                  for idx, match in enumerate(matches.get("metadatas", [])):
+                      update_meta = match.copy()
+                      if entry["name"] not in update_meta.get("used_in", []):
+                          update_meta["used_in"] = list(set(update_meta.get("used_in", []) + [entry["name"]]))
+                          collection.update(
+                              ids=[matches["ids"][idx]],
+                              metadatas=[update_meta]
+                          )
+
+              # Update current class metadata
+              entry["used_in"] = merged_used_in
+              collection.update(ids=[class_id], metadatas=[entry])
+
+          else:
+              # Insert new
+              collection.add(
+                  ids=[class_id],
+                  documents=[entry["summary"]],
+                  metadatas=[entry]
+              )
+
+      return f"{len(entries)} classes processed and saved."
+
+output:
+  success_message: Summary data saved and relationships updated in ChromaDB.
