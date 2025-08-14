@@ -52,8 +52,8 @@ class KotlinASTAnalyzer:
     KEY_CLASS_MODIFIER = "class.modifier"      # Class modifier (data, sealed, etc.) capture
     KEY_TYPE_NAME = "type.name"                # Class/interface name capture
     KEY_CLASS_BODY = "class.body"              # Class body content capture
-    KEY_EXTENDS = "extends"                    # Superclass inheritance capture
-    KEY_IMPLEMENTS = "implements"              # Interface implementation capture
+    KEY_CLASS_PARENT = "class.parent"                    # Superclass inheritance capture
+    KEY_CLASS_INTERFACE = "class.interface"              # Interface implementation capture
     KEY_FUNCTION_ANNOTATION = "function.annotation"  # Function annotation capture
     KEY_FUNCTION_VISIBILITY = "function.visibility"  # Function visibility capture
     KEY_FUNCTION_NAME = "function.name"        # Function name capture
@@ -69,9 +69,7 @@ class KotlinASTAnalyzer:
     KEY_CTOR_PARAM_NAME = "ctor.param.name"    # Constructor parameter name capture
     KEY_CTOR_PARAM_TYPE = "ctor.param.type"    # Constructor parameter type capture
     KEY_CTOR_PARAM_DEFAULT = "ctor.param.default"  # Constructor parameter default capture
-    KEY_OBJECT_MODIFIER = "object.modifier"    # Object declaration modifier capture
-    KEY_OBJECT_NAME = "object.name"            # Object name capture
-    KEY_OBJECT_SUPERCLASS = "object.superclass"  # Object superclass capture
+    KEY_DECLARATION = "declaration"
 
     def _get_package_query(self) -> str:
         """
@@ -166,15 +164,28 @@ class KotlinASTAnalyzer:
         """
         return f"""
         ;; Class/interface declaration query - Captures class structure and metadata
-        (class_declaration
-            (modifiers
-                (annotation)? @{self.KEY_CLASS_ANNOTATION}*    ;; Class annotations (e.g., @Deprecated)
-                (visibility_modifier)? @{self.KEY_CLASS_VISIBILITY}  ;; Visibility (public, private, internal)
-                (class_modifier)? @{self.KEY_CLASS_MODIFIER}    ;; Modifiers (data, sealed, abstract, etc.)
-            )?
-            (identifier) @{self.KEY_TYPE_NAME}                 ;; Class/interface name
-            (class_body)? @{self.KEY_CLASS_BODY}               ;; Class body content for further analysis
-        )
+        [
+            (class_declaration
+                (modifiers
+                    (annotation)? @{self.KEY_CLASS_ANNOTATION}*    ;; Class annotations (e.g., @Deprecated)
+                    (visibility_modifier)? @{self.KEY_CLASS_VISIBILITY}  ;; Visibility (public, private, internal)
+                    (class_modifier)? @{self.KEY_CLASS_MODIFIER}    ;; Modifiers (data, sealed, abstract, etc.)
+                )?
+                (identifier) @{self.KEY_TYPE_NAME}                 ;; Class/interface name
+                (class_body)? @{self.KEY_CLASS_BODY}               ;; Class body content for further analysis
+            )
+            
+            (object_declaration
+                (modifiers
+                    (annotation)? @{self.KEY_CLASS_ANNOTATION}*    ;; Class annotations (e.g., @Deprecated)
+                    (visibility_modifier)? @{self.KEY_CLASS_VISIBILITY}  ;; Visibility (public, private, internal)
+                    (class_modifier)? @{self.KEY_CLASS_MODIFIER}    ;; Modifiers (data, sealed, abstract, etc.)
+                )?
+                (identifier) @{self.KEY_TYPE_NAME}                 ;; Class/interface name
+                (class_body)? @{self.KEY_CLASS_BODY}               ;; Class body content for further analysis
+            )
+        ]
+        
         """
 
     def _get_extends_implements_query(self) -> str:
@@ -211,14 +222,16 @@ class KotlinASTAnalyzer:
         (delegation_specifiers
             (delegation_specifier 
                 (constructor_invocation 
-                    (user_type (identifier) @{self.KEY_EXTENDS})    ;; Superclass inheritance
+                    (user_type 
+                        (identifier) @{self.KEY_CLASS_PARENT}
+                    )    ;; Superclass inheritance
                 )
-            )
+            )?
             (delegation_specifier 
                 (user_type 
-                    (identifier) @{self.KEY_IMPLEMENTS}            ;; Interface implementations
-                )*
-            )
+                    (identifier) @{self.KEY_CLASS_INTERFACE}            ;; Interface implementations
+                )
+            )?
         )
         """
 
@@ -398,54 +411,14 @@ class KotlinASTAnalyzer:
         )
         """
 
-    def _get_object_query(self) -> str:
-        """
-        Get the object declaration query.
-        
-        This query extracts singleton object declarations with their metadata.
-        
-        **Query Pattern:**
-        ```kotlin
-        object Singleton {
-            val instance = "single instance"
-        }
-        
-        data object ComplexForm : FormFactor()
-        
-        object SimpleForm : FormFactor()
-        ```
-        
-        **Captures:**
-        - ``{self.KEY_OBJECT_MODIFIER}``: Object modifiers (e.g., "data object")
-        - ``{self.KEY_OBJECT_NAME}``: Object name (e.g., "Singleton", "ComplexForm", "SimpleForm")
-        - ``{self.KEY_OBJECT_SUPERCLASS}``: Object superclass if any (e.g., "FormFactor")
-        
-        **Example Output:**
-        - Input: ``data object ComplexForm : FormFactor()``
-        - Captured:
-          - ``{self.KEY_OBJECT_MODIFIER} = "data object"``
-          - ``{self.KEY_OBJECT_NAME} = "ComplexForm"``
-          - ``{self.KEY_OBJECT_SUPERCLASS} = "FormFactor"``
-        
-        **Use Case:** Understanding singleton objects and their inheritance relationships.
-        """
+    def _get_class_or_object_query(self):
         return f"""
-        ;; Object declaration query - Captures singleton object metadata
-        (object_declaration
-        (modifiers
-            (class_modifier) @{self.KEY_OBJECT_MODIFIER}              ;; Object modifiers (e.g., data object)
-        )?
-        (identifier) @{self.KEY_OBJECT_NAME}                          ;; Object name
-        (delegation_specifiers
-            (delegation_specifier
-                (constructor_invocation
-                    (user_type
-                        (identifier) @{self.KEY_OBJECT_SUPERCLASS}    ;; Object superclass if any
-                    )
-                )
-            )
-        )?
-    )
+        (
+          [
+            (class_declaration) 
+            (object_declaration)
+          ] @{self.KEY_DECLARATION}
+        )
         """
 
     def __init__(self):
@@ -463,7 +436,7 @@ class KotlinASTAnalyzer:
     def analyze_kotlin_file(self, file_path: str,
                             source_bytes: bytes,
                             print_debug_info: bool = False
-                            ) -> KotlinAnalysisData:
+                            ) -> list[KotlinAnalysisData] | None:
         """
         Analyze a Kotlin code file and extract structural information.
         
@@ -491,7 +464,7 @@ class KotlinASTAnalyzer:
             ...     result = analyzer.analyze_kotlin_file('MyClass.kt', source_bytes)
             ...     print(f"Found class: {result.name}")
         """
-        kotlin_analysis = KotlinAnalysisData()
+
         try:
             tree = self.parser.parse(source_bytes)
             root_node = tree.root_node
@@ -500,61 +473,61 @@ class KotlinASTAnalyzer:
                 self._print_tree(source_bytes=source_bytes, node=root_node)
                 print("=== END DEBUG ===\n")
 
-            self._start(root_node, kotlin_analysis)
+            kotlin_analysis = self._start(root_node,file_path)
             print("==" * 60)
             print("=" * 24 + "FINAL RESULT" + "=" * 24)
             print("==" * 60)
             pprint(kotlin_analysis)
             print("==" * 60)
+            return kotlin_analysis
         except Exception as err:
             print("*" * 4 + "ERROR" + "*" * 4)
             print(err)
             print("*" * 4 + "ERROR" + "*" * 4)
 
-        return kotlin_analysis
 
-    def _start(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
-        """
-        Start the analysis process by extracting all major components.
-        
-        This private method orchestrates the extraction of all major code elements
-        from the AST root node and populates the analysis data object.
-        
-        Args:
-            root_node (Node): The root node of the parsed AST
-            kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
-        
-        Note:
-            This method handles errors gracefully and continues processing even if
-            individual extraction methods fail.
-        """
-        try:
-            kotlin_analysis.imports = self._extract_imports_wq(root_node)
-            kotlin_analysis.package_name = self._extract_package_name_wq(root_node)
-            self._extract_high_level_declaration_wq(root_node, kotlin_analysis)
-            kotlin_analysis.type = f"{kotlin_analysis.type} {self._extract_type(root_node)}".strip()
+    def _start(self, root_node: Node , file_path: str) -> list[KotlinAnalysisData]:
+        package = self._extract_package_name_wq(root_node)
+        imports = self._extract_imports_wq(root_node)
+        analysis_data = []
+        cursor = self._create_query_cursor(self._get_class_or_object_query())
+        matches = cursor.matches(root_node)
 
-            self._extract_parents(root_node, kotlin_analysis)
-            self._extract_members_wq(root_node, kotlin_analysis)
-            self._extract_constructor_params_wq(root_node, kotlin_analysis)
+        for index, match in enumerate(matches):
+            pprint(f"{index}: {match}")
+            captures_dict = match[1]
 
-        except Exception as err:
-            print("=" * 40 + "ERROR" + "=" * 40)
-            print(err)
-            print("=" * 4 + "ERROR" + "=" * 40)
+            kotlin_analysis = KotlinAnalysisData()
+            kotlin_analysis.filename = file_path
+            kotlin_analysis.package_name = package
+            kotlin_analysis.imports = imports
+
+            if self.KEY_DECLARATION in captures_dict:
+                declaration_node = captures_dict[self.KEY_DECLARATION][0]
+
+                self._extract_high_level_declaration_wq(declaration_node, kotlin_analysis)
+                kotlin_analysis.type = f"{kotlin_analysis.type} {self._extract_type(declaration_node)}".strip()
+
+                self._extract_parents(declaration_node, kotlin_analysis)
+                self._extract_members_wq(declaration_node, kotlin_analysis)
+                self._extract_constructor_params_wq(declaration_node, kotlin_analysis)
+
+                analysis_data.append(kotlin_analysis)
+
+        return analysis_data
 
     def _extract_constructor_params_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         """
         Extract constructor parameters using tree-sitter queries.
-        
+
         This method uses the CTOR_PARAMS_QUERY to find and extract information
         about primary constructor parameters including their names, types,
         annotations, visibility modifiers, and default values.
-        
+
         Args:
             root_node (Node): The root node of the parsed AST
             kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
-        
+
         Note:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
@@ -562,28 +535,29 @@ class KotlinASTAnalyzer:
         cursor = self._create_query_cursor(self._get_ctor_params_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
-            member_data = VariableData()
             pprint(f"{index}: {match}")
             captures_dict = match[1]
-            if self.KEY_CTOR_PARAM_NAME in captures_dict:
-                ctor_params = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_NAME][0])
-                member_data.name = ctor_params
+            if captures_dict:
+                member_data = VariableData()
+                if self.KEY_CTOR_PARAM_NAME in captures_dict:
+                    ctor_params = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_NAME][0])
+                    member_data.name = ctor_params
 
-            if self.KEY_CTOR_PARAM_ANNOTATION in captures_dict:
-                for property_annotation_node in captures_dict[self.KEY_CTOR_PARAM_ANNOTATION]:
-                    annotation = self._get_node_text(property_annotation_node)
-                    member_data.annotations.append(annotation)
+                if self.KEY_CTOR_PARAM_ANNOTATION in captures_dict:
+                    for property_annotation_node in captures_dict[self.KEY_CTOR_PARAM_ANNOTATION]:
+                        annotation = self._get_node_text(property_annotation_node)
+                        member_data.annotations.append(annotation)
 
-            if self.KEY_CTOR_PARAM_VISIBILITY in captures_dict:
-                member_data.visibility = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_VISIBILITY][0])
+                if self.KEY_CTOR_PARAM_VISIBILITY in captures_dict:
+                    member_data.visibility = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_VISIBILITY][0])
 
-            if self.KEY_CTOR_PARAM_TYPE in captures_dict:
-                member_data.type = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_TYPE][0])
+                if self.KEY_CTOR_PARAM_TYPE in captures_dict:
+                    member_data.type = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_TYPE][0])
 
-            if self.KEY_CTOR_PARAM_DEFAULT in captures_dict:
-                member_data.default_value = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_DEFAULT][0])
+                if self.KEY_CTOR_PARAM_DEFAULT in captures_dict:
+                    member_data.default_value = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_DEFAULT][0])
 
-            kotlin_analysis.constructor_param_type.append(member_data)
+                kotlin_analysis.constructor_param_type.append(member_data)
 
     def _extract_members_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         """
@@ -682,19 +656,21 @@ class KotlinASTAnalyzer:
     def _extract_type(self, node: Node):
         """
         Recursively extract the type of a declaration node.
-        
+
         This method traverses the AST to find the type of a declaration,
         such as 'class', 'interface', or 'object'.
-        
+
         Args:
             node (Node): The AST node to analyze
-        
+
         Returns:
             Optional[str]: The type of the declaration if found, None otherwise
         """
+        if node.type == "object_declaration":
+            return "object"
         if node.type == "class_declaration":
             for child in node.children:
-                if child.type in ("class", "interface"):
+                if child.type in ("class", "interface" ):
                     return child.type
         for child in node.children:
             result = self._extract_type(child)
@@ -705,15 +681,15 @@ class KotlinASTAnalyzer:
     def _extract_high_level_declaration_wq(self, root_node: Node, analysis: KotlinAnalysisData):
         """
         Extract high-level class/interface declaration details using tree-sitter queries.
-        
+
         This method uses the HIGH_LEVEL_CLASS_QUERY to extract comprehensive information
         about class declarations including annotations, visibility modifiers, class modifiers,
         names, and function definitions within the class body.
-        
+
         Args:
             root_node (Node): The root node of the parsed AST
             analysis (KotlinAnalysisData): The analysis data object to populate
-        
+
         Note:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
@@ -756,11 +732,11 @@ class KotlinASTAnalyzer:
     def _extract_parents(self, root_node, kotlin_analysis):
         """
         Extract inheritance relationships using tree-sitter queries.
-        
+
         This method uses the EXTENDS_IMPLEMENTS_QUERY to find and extract
         information about class inheritance (extends) and interface
         implementations (implements).
-        
+
         Args:
             root_node (Node): The root node of the parsed AST
             kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
@@ -772,27 +748,27 @@ class KotlinASTAnalyzer:
             pprint(f"{index}: {match}")
             captures_dict = match[1]
             print(captures_dict)
-            if self.KEY_EXTENDS in captures_dict:
-                kotlin_analysis.extends = self._get_node_text(captures_dict[self.KEY_EXTENDS][0])
+            if self.KEY_CLASS_PARENT in captures_dict:
+                kotlin_analysis.extends = self._get_node_text(captures_dict[self.KEY_CLASS_PARENT][0])
 
-            if self.KEY_IMPLEMENTS in captures_dict:
-                kotlin_analysis.implements.append(self._get_node_text(captures_dict[self.KEY_IMPLEMENTS][0]))
+            if self.KEY_CLASS_INTERFACE in captures_dict:
+                kotlin_analysis.implements.append(self._get_node_text(captures_dict[self.KEY_CLASS_INTERFACE][0]))
 
     def _extract_functions_wq(self, root_node: Node, analysis: KotlinAnalysisData) -> List[str]:
         """
         Extract function declarations using tree-sitter queries.
-        
+
         This method uses the FUNCTION_QUERY to find and extract information
         about function declarations including annotations, names, visibility,
         parameters, and return types.
-        
+
         Args:
             root_node (Node): The root node of the parsed AST
             analysis (KotlinAnalysisData): The analysis data object to populate
-        
+
         Returns:
             List[str]: List of function names extracted (for backward compatibility)
-        
+
         Note:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
@@ -827,11 +803,11 @@ class KotlinASTAnalyzer:
     def _extract_imports(self, captures_dict, index):
         """
         Extract import statement from capture dictionary.
-        
+
         Args:
             captures_dict (dict): Dictionary containing captured nodes from tree-sitter query
             index (int): Index of the current match for debugging purposes
-        
+
         Returns:
             str: The import statement text if found, empty string otherwise
         """
@@ -846,11 +822,11 @@ class KotlinASTAnalyzer:
     def _extract_package_name(self, captures_dict, index) -> str:
         """
         Extract package name from capture dictionary.
-        
+
         Args:
             captures_dict (dict): Dictionary containing captured nodes from tree-sitter query
             index (int): Index of the current match for debugging purposes
-        
+
         Returns:
             str: The package name text if found, empty string otherwise
         """
@@ -865,13 +841,13 @@ class KotlinASTAnalyzer:
     def _create_query_cursor(self, query_text: str) -> QueryCursor:
         """
         Create a tree-sitter query cursor for executing queries.
-        
+
         Args:
             query_text (str): The tree-sitter query string to compile
-        
+
         Returns:
             QueryCursor: A cursor for executing the compiled query
-        
+
         Raises:
             Exception: If query compilation fails
         """
@@ -886,10 +862,10 @@ class KotlinASTAnalyzer:
     def _get_node_text(self, node) -> str:
         """
         Get text content of a tree-sitter node.
-        
+
         Args:
             node (Node): The tree-sitter node to extract text from
-        
+
         Returns:
             str: The decoded text content of the node, or empty string if node is None
         """
@@ -898,11 +874,11 @@ class KotlinASTAnalyzer:
     def _print_tree(self, source_bytes: bytes, node=None, indent=0, max_lines=2000):
         """
         Print a visual representation of the AST tree structure.
-        
+
         This method recursively traverses the AST and prints each node with
         proper indentation to show the tree hierarchy. Useful for debugging
         and understanding the structure of parsed Kotlin code.
-        
+
         Args:
             source_bytes (bytes): The original source code bytes for text extraction
             node (Node, optional): The current node to print. Defaults to None.
@@ -919,14 +895,14 @@ class KotlinASTAnalyzer:
     def _node_text(self, source_bytes: bytes, node) -> str:
         """
         Extract text content from a node using byte offsets.
-        
+
         This method extracts the text content of a tree-sitter node by using
         the node's start and end byte positions to slice the original source bytes.
-        
+
         Args:
             source_bytes (bytes): The original source code bytes
             node (Node): The tree-sitter node to extract text from
-        
+
         Returns:
             str: The decoded text content of the node
         """
@@ -1052,8 +1028,53 @@ data class CustomForm(val customization: Float) : FormFactor()
     val destinationPath : String,
 )
     """
+
+    source_code_5 = """
+        package org.jay.sample.computing
+        
+        import org.jay.sample.computing.categories.Processor
+        import org.jat.sample.pie.categories.Processor as PiProcessor
+        import kotlin.random.Random
+        
+        @Nullable
+         private data class Input(
+            val sourcePath : String,
+            val destinationPath : String,
+        )
+        
+        @Service
+        @Ishqay(modifier = PACKAGE)
+        internal interface IProcessorDelay<T : SomeFancyClass> {
+            fun startProcessing(category: ProcessorCategory , someThing: SomeThingSomeThing , p: Int) : Boolean
+            
+            @Nullable
+            fun emptyParamFuncName()
+            
+            @Visibility(private)
+            internal fun processData(data: T): Any?
+        }
+        
+        sealed class FormFactor
+
+data object ComplexForm : FormFactor()
+object SimpleForm : FormFactor()
+data class CustomForm(val customization: Float) : FormFactor()
+        @Dost
+        class SomethingSomething(){
+        fun processData(data: T): Any?{
+        }
+        }
+        """
+
+    source_code_6 = """
+@Dost
+        class SomethingSomething(){
+        fun processData(data: T): Any?{
+        }
+        }
+"""
     KotlinASTAnalyzer().analyze_kotlin_file(file_path=file_path_1,
-                                            source_bytes=source_code_3.encode("utf-8"),
+                                            source_bytes=source_code_5.encode("utf-8"),
                                             print_debug_info=True)
 
 
