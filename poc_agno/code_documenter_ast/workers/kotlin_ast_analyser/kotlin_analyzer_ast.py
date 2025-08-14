@@ -40,10 +40,6 @@ class KotlinASTAnalyzer:
         _get_members_query(): Returns property declaration query
         _get_ctor_params_query(): Returns constructor parameters query
         _get_object_query(): Returns object declaration query
-        
-    Methods:
-        get_all_queries_documentation(): Get comprehensive documentation for all queries
-        _get_*_query_doc(): Individual query documentation methods
     """
 
     # Query capture key constants - Used in tree-sitter queries and result processing
@@ -327,7 +323,6 @@ class KotlinASTAnalyzer:
                 [
                     (user_type 
                         (identifier) @{self.KEY_PROPERTY_TYPE}        ;; Property type (e.g., String, Int, List<T>)
-                        (identifier) @{self.KEY_PROPERTY_TYPE}        ;; Property type (e.g., String, Int, List<T>)
                     )
                     (nullable_type 
                         (user_type 
@@ -452,33 +447,6 @@ class KotlinASTAnalyzer:
         )?
     )
         """
-    
-    def get_all_queries_documentation(self) -> dict:
-        """
-        Get comprehensive documentation for all tree-sitter queries.
-        
-        Returns a dictionary containing documentation for each query with examples
-        and capture information.
-        
-        Returns:
-            dict: Dictionary mapping query names to their documentation strings
-            
-        Example:
-            >>> analyzer = KotlinASTAnalyzer()
-            >>> docs = analyzer.get_all_queries_documentation()
-            >>> print(docs['PACKAGE_QUERY'])
-            # Package declaration query documentation...
-        """
-        return {
-            'PACKAGE_QUERY': self._get_package_query(),
-            'IMPORT_QUERY': self._get_import_query(),
-            'HIGH_LEVEL_CLASS_QUERY': self._get_high_level_class_query(),
-            'EXTENDS_IMPLEMENTS_QUERY': self._get_extends_implements_query(),
-            'FUNCTION_QUERY': self._get_function_query(),
-            'MEMBERS_QUERY': self._get_members_query(),
-            'CTOR_PARAMS_QUERY': self._get_ctor_params_query(),
-            'OBJECT_QUERY': self._get_object_query()
-        }
 
     def __init__(self):
         """
