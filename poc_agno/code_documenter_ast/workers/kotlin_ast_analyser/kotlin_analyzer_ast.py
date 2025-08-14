@@ -16,135 +16,469 @@ class KotlinASTAnalyzer:
     the AST and extracting structural information including classes, functions,
     properties, annotations, and inheritance relationships.
     
+    The analyzer uses tree-sitter queries with named captures to extract specific
+    code elements. All capture names are defined as constants to ensure consistency
+    and maintainability across queries and result processing.
+    
+    Each query has comprehensive documentation explaining what it extracts, with
+    examples and use cases. Use the `get_all_queries_documentation()` method to
+    access detailed documentation for all queries.
+    
     Attributes:
         language (Language): The tree-sitter language object for Kotlin
         parser (Parser): The tree-sitter parser instance
-        PACKAGE_QUERY (str): Tree-sitter query for package declarations
-        IMPORT_QUERY (str): Tree-sitter query for import statements
-        HIGH_LEVEL_CLASS_QUERY (str): Tree-sitter query for class declarations
-        EXTENDS_IMPLEMENTS_QUERY (str): Tree-sitter query for inheritance
-        FUNCTION_QUERY (str): Tree-sitter query for function declarations
-        MEMBERS_QUERY (str): Tree-sitter query for property declarations
-        CTOR_PARAMS_QUERY (str): Tree-sitter query for constructor parameters
-        OBJECT_QUERY (str): Tree-sitter query for object declarations
+        
+        # Query capture key constants - Define all capture names used in queries
+        KEY_PACKAGE, KEY_IMPORT, KEY_CLASS_ANNOTATION, etc.
+        
+        # Tree-sitter query methods - Return query strings with capture key constants
+        _get_package_query(): Returns package declaration query
+        _get_import_query(): Returns import statements query
+        _get_high_level_class_query(): Returns class declaration query
+        _get_extends_implements_query(): Returns inheritance query
+        _get_function_query(): Returns function declaration query
+        _get_members_query(): Returns property declaration query
+        _get_ctor_params_query(): Returns constructor parameters query
+        _get_object_query(): Returns object declaration query
+        
+    Methods:
+        get_all_queries_documentation(): Get comprehensive documentation for all queries
+        _get_*_query_doc(): Individual query documentation methods
     """
 
-    PACKAGE_QUERY = """
-    ;; Package declaration
-    (package_header (qualified_identifier) @package)
-    """
+    # Query capture key constants - Used in tree-sitter queries and result processing
+    # These constants define the capture names used in tree-sitter queries
+    # and are referenced throughout the code to avoid magic strings
+    KEY_PACKAGE = "package"                    # Package declaration capture
+    KEY_IMPORT = "import"                      # Import statement capture
+    KEY_CLASS_ANNOTATION = "class.annotation"  # Class-level annotation capture
+    KEY_CLASS_VISIBILITY = "class.visibility"  # Class visibility modifier capture
+    KEY_CLASS_MODIFIER = "class.modifier"      # Class modifier (data, sealed, etc.) capture
+    KEY_TYPE_NAME = "type.name"                # Class/interface name capture
+    KEY_CLASS_BODY = "class.body"              # Class body content capture
+    KEY_EXTENDS = "extends"                    # Superclass inheritance capture
+    KEY_IMPLEMENTS = "implements"              # Interface implementation capture
+    KEY_FUNCTION_ANNOTATION = "function.annotation"  # Function annotation capture
+    KEY_FUNCTION_VISIBILITY = "function.visibility"  # Function visibility capture
+    KEY_FUNCTION_NAME = "function.name"        # Function name capture
+    KEY_FUNCTION_PARAMS = "function.params"    # Function parameters capture
+    KEY_FUNCTION_RETURN_TYPE = "function.return_type"  # Function return type capture
+    KEY_PROPERTY_ANNOTATION = "property.annotation"    # Property annotation capture
+    KEY_PROPERTY_VISIBILITY = "property.visibility"    # Property visibility capture
+    KEY_PROPERTY_NAME = "property.name"        # Property name capture
+    KEY_PROPERTY_TYPE = "property.type"        # Property type capture
+    KEY_PROPERTY_DEFAULT = "property.default"  # Property default value capture
+    KEY_CTOR_PARAM_ANNOTATION = "ctor.param.annotation"    # Constructor param annotation capture
+    KEY_CTOR_PARAM_VISIBILITY = "ctor.param.visibility"    # Constructor param visibility capture
+    KEY_CTOR_PARAM_NAME = "ctor.param.name"    # Constructor parameter name capture
+    KEY_CTOR_PARAM_TYPE = "ctor.param.type"    # Constructor parameter type capture
+    KEY_CTOR_PARAM_DEFAULT = "ctor.param.default"  # Constructor parameter default capture
+    KEY_OBJECT_MODIFIER = "object.modifier"    # Object declaration modifier capture
+    KEY_OBJECT_NAME = "object.name"            # Object name capture
+    KEY_OBJECT_SUPERCLASS = "object.superclass"  # Object superclass capture
 
-    IMPORT_QUERY = """
-    ; Matches normal import statements
-    (import (qualified_identifier) @import)
-    """
+    def _get_package_query(self) -> str:
+        """
+        Get the package declaration query.
+        
+        This query extracts package declarations from Kotlin source code.
+        
+        **Query Pattern:**
+        ```kotlin
+        package org.example.myapp
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_PACKAGE}``: The full package identifier (e.g., "org.example.myapp")
+        
+        **Example Output:**
+        - Input: ``package com.company.project``
+        - Captured: ``{self.KEY_PACKAGE} = "com.company.project"``
+        
+        **Use Case:** Identifying the namespace/package of the Kotlin file.
+        """
+        return f"""
+        ;; Package declaration query - Captures package name from package_header
+        (package_header (qualified_identifier) @{self.KEY_PACKAGE})
+        """
 
-    HIGH_LEVEL_CLASS_QUERY = """
-    (class_declaration
-        (modifiers
-            (annotation)? @class.annotation*
-            (visibility_modifier)? @class.visibility
-            (class_modifier)? @class.modifier
-        )?
-        (identifier) @type.name
-        (class_body)? @class.body
-    )
-    """
+    def _get_import_query(self) -> str:
+        """
+        Get the import statements query.
+        
+        This query extracts all import statements from Kotlin source code.
+        
+        **Query Pattern:**
+        ```kotlin
+        import kotlin.collections.List
+        import org.example.User
+        import javax.inject.Inject
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_IMPORT}``: Each import statement identifier
+        
+        **Example Output:**
+        - Input: Multiple import statements
+        - Captured: 
+          - ``{self.KEY_IMPORT} = "kotlin.collections.List"``
+          - ``{self.KEY_IMPORT} = "org.example.User"``
+          - ``{self.KEY_IMPORT} = "javax.inject.Inject"``
+        
+        **Use Case:** Building dependency graphs and understanding external dependencies.
+        """
+        return f"""
+        ;; Import statements query - Captures all import declarations
+        (import (qualified_identifier) @{self.KEY_IMPORT})
+        """
 
-    EXTENDS_IMPLEMENTS_QUERY = """
-    (delegation_specifiers
-        (delegation_specifier 
-            (constructor_invocation 
-                (user_type (identifier) @extends)
+    def _get_high_level_class_query(self) -> str:
+        """
+        Get the high-level class/interface declaration query.
+        
+        This query extracts comprehensive information about class and interface declarations.
+        
+        **Query Pattern:**
+        ```kotlin
+        @Deprecated("Use NewClass instead")
+        public data class User(
+            val name: String,
+            val age: Int
+        ) { ... }
+        
+        @Service
+        internal interface UserService { ... }
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_CLASS_ANNOTATION}``: Class-level annotations (e.g., "@Deprecated", "@Service")
+        - ``{self.KEY_CLASS_VISIBILITY}``: Visibility modifier ("public", "private", "internal")
+        - ``{self.KEY_CLASS_MODIFIER}``: Class modifiers ("data", "sealed", "abstract", "enum")
+        - ``{self.KEY_TYPE_NAME}``: Class/interface name (e.g., "User", "UserService")
+        - ``{self.KEY_CLASS_BODY}``: Class body content for further analysis
+        
+        **Example Output:**
+        - Input: ``@Deprecated public data class User { ... }``
+        - Captured:
+          - ``{self.KEY_CLASS_ANNOTATION} = ["@Deprecated"]``
+          - ``{self.KEY_CLASS_VISIBILITY} = "public"``
+          - ``{self.KEY_CLASS_MODIFIER} = "data"``
+          - ``{self.KEY_TYPE_NAME} = "User"``
+          - ``{self.KEY_CLASS_BODY} = class body node``
+        
+        **Use Case:** Understanding class structure, modifiers, and metadata for documentation generation.
+        """
+        return f"""
+        ;; Class/interface declaration query - Captures class structure and metadata
+        (class_declaration
+            (modifiers
+                (annotation)? @{self.KEY_CLASS_ANNOTATION}*    ;; Class annotations (e.g., @Deprecated)
+                (visibility_modifier)? @{self.KEY_CLASS_VISIBILITY}  ;; Visibility (public, private, internal)
+                (class_modifier)? @{self.KEY_CLASS_MODIFIER}    ;; Modifiers (data, sealed, abstract, etc.)
+            )?
+            (identifier) @{self.KEY_TYPE_NAME}                 ;; Class/interface name
+            (class_body)? @{self.KEY_CLASS_BODY}               ;; Class body content for further analysis
+        )
+        """
+
+    def _get_extends_implements_query(self) -> str:
+        """
+        Get the inheritance and interface implementation query.
+        
+        This query extracts inheritance relationships and interface implementations.
+        
+        **Query Pattern:**
+        ```kotlin
+        class User : BaseUser(), Serializable, Cloneable {
+            // class body
+        }
+        
+        interface UserService : BaseService, Auditable {
+            // interface body
+        }
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_EXTENDS}``: Superclass that this class extends (e.g., "BaseUser")
+        - ``{self.KEY_IMPLEMENTS}``: Interfaces that this class implements (e.g., "Serializable", "Cloneable")
+        
+        **Example Output:**
+        - Input: ``class User : BaseUser(), Serializable, Cloneable``
+        - Captured:
+          - ``{self.KEY_EXTENDS} = "BaseUser"``
+          - ``{self.KEY_IMPLEMENTS} = "BaseUser"``
+        
+        **Use Case:** Building inheritance hierarchies and understanding class relationships.
+        """
+        return f"""
+        ;; Inheritance and interface implementation query
+        (delegation_specifiers
+            (delegation_specifier 
+                (constructor_invocation 
+                    (user_type (identifier) @{self.KEY_EXTENDS})    ;; Superclass inheritance
+                )
+            )
+            (delegation_specifier 
+                (user_type 
+                    (identifier) @{self.KEY_IMPLEMENTS}            ;; Interface implementations
+                )*
             )
         )
-        (delegation_specifier 
-            (user_type 
-                (identifier) @implements
-            )*
-        )
-    )
-    """
+        """
 
-    FUNCTION_QUERY = """
-    (function_declaration
-            (modifiers
-                (annotation)? @function.annotation
-                (visibility_modifier)? @function.visibility
-            )?
-            (identifier) @function.name
-            (function_value_parameters) @function.params
-            [
-                (user_type (identifier) @function.return_type)
-                (nullable_type (user_type (identifier) @function.return_type))
-            ]?
-        )
-    """
-
-    MEMBERS_QUERY = """
-    (property_declaration
-        (modifiers
-            (annotation)* @property.annotation
-            (visibility_modifier)? @property.visibility
-        )?
-        (variable_declaration 
-            (identifier) @property.name
-            [
-                (user_type 
-                    (identifier) @property.type
-                )
-                (nullable_type 
-                    (user_type 
-                        (identifier) @property.type
-                    )
-                )
-            ]
-        )
-        (_) @property.default
-    )
-    """
-
-    CTOR_PARAMS_QUERY = """
-    (primary_constructor
-        (class_parameters 
-            (class_parameter 
+    def _get_function_query(self) -> str:
+        """
+        Get the function/method declaration query.
+        
+        This query extracts function and method declarations with their metadata.
+        
+        **Query Pattern:**
+        ```kotlin
+        @Override
+        public fun calculateSum(a: Int, b: Int): Int {
+            return a + b
+        }
+        
+        @Deprecated("Use newCalculate instead")
+        private fun oldCalculate(): String? {
+            return "deprecated"
+        }
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_FUNCTION_ANNOTATION}``: Function annotations (e.g., "@Override", "@Deprecated")
+        - ``{self.KEY_FUNCTION_VISIBILITY}``: Visibility modifier ("public", "private", "internal")
+        - ``{self.KEY_FUNCTION_NAME}``: Function name (e.g., "calculateSum", "oldCalculate")
+        - ``{self.KEY_FUNCTION_PARAMS}``: Function parameters (e.g., "a: Int, b: Int")
+        - ``{self.KEY_FUNCTION_RETURN_TYPE}``: Return type (e.g., "Int", "String?")
+        
+        **Example Output:**
+        - Input: ``@Override public fun calculateSum(a: Int, b: Int): Int``
+        - Captured:
+          - ``{self.KEY_FUNCTION_ANNOTATION} = ["@Override"]``
+          - ``{self.KEY_FUNCTION_VISIBILITY} = "public"``
+          - ``{self.KEY_FUNCTION_NAME} = "calculateSum"``
+          - ``{self.KEY_FUNCTION_PARAMS} = "a: Int, b: Int"``
+          - ``{self.KEY_FUNCTION_RETURN_TYPE} = "Int"``
+        
+        **Use Case:** Generating function documentation and understanding method signatures.
+        """
+        return f"""
+        ;; Function/method declaration query - Captures function metadata and signature
+        (function_declaration
                 (modifiers
-                    (annotation)* @ctor.param.annotation
-                    (visibility_modifier)? @ctor.param.visibility
+                    (annotation)? @{self.KEY_FUNCTION_ANNOTATION}      ;; Function annotations
+                    (visibility_modifier)? @{self.KEY_FUNCTION_VISIBILITY}  ;; Function visibility
                 )?
-                (identifier) @ctor.param.name
+                (identifier) @{self.KEY_FUNCTION_NAME}                    ;; Function name
+                (function_value_parameters) @{self.KEY_FUNCTION_PARAMS}   ;; Function parameters
+                [
+                    (user_type (identifier) @{self.KEY_FUNCTION_RETURN_TYPE})      ;; Return type
+                    (nullable_type (user_type (identifier) @{self.KEY_FUNCTION_RETURN_TYPE}))  ;; Nullable return type
+                ]?
+            )
+        """
+
+    def _get_members_query(self) -> str:
+        """
+        Get the class property/member declaration query.
+        
+        This query extracts class properties and member variables with their metadata.
+        
+        **Query Pattern:**
+        ```kotlin
+        @Inject
+        @Volatile
+        private var counter: Int = 0
+        
+        @Serializable
+        public val name: String = "default"
+        
+        internal var description: String? = null
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_PROPERTY_ANNOTATION}``: Property annotations (e.g., "@Inject", "@Volatile", "@Serializable")
+        - ``{self.KEY_PROPERTY_VISIBILITY}``: Visibility modifier ("public", "private", "internal")
+        - ``{self.KEY_PROPERTY_NAME}``: Property name (e.g., "counter", "name", "description")
+        - ``{self.KEY_PROPERTY_TYPE}``: Property type (e.g., "Int", "String", "String?")
+        - ``{self.KEY_PROPERTY_DEFAULT}``: Default value or initialization (e.g., "0", "\"default\"", "null")
+        
+        **Example Output:**
+        - Input: ``@Inject @Volatile private var counter: Int = 0``
+        - Captured:
+          - ``{self.KEY_PROPERTY_ANNOTATION} = ["@Inject", "@Volatile"]``
+          - ``{self.KEY_PROPERTY_VISIBILITY} = "private"``
+          - ``{self.KEY_PROPERTY_NAME} = "counter"``
+          - ``{self.KEY_PROPERTY_TYPE} = "Int"``
+          - ``{self.KEY_PROPERTY_DEFAULT} = "0"``
+        
+        **Use Case:** Generating property documentation and understanding class structure.
+        """
+        return f"""
+        ;; Class property/member declaration query - Captures property metadata and type info
+        (property_declaration
+            (modifiers
+                (annotation)* @{self.KEY_PROPERTY_ANNOTATION}        ;; Property annotations (e.g., @Inject, @Volatile)
+                (visibility_modifier)? @{self.KEY_PROPERTY_VISIBILITY}  ;; Property visibility (public, private, etc.)
+            )?
+            (variable_declaration 
+                (identifier) @{self.KEY_PROPERTY_NAME}                ;; Property name
                 [
                     (user_type 
-                        (identifier) @ctor.param.type
+                        (identifier) @{self.KEY_PROPERTY_TYPE}        ;; Property type (e.g., String, Int, List<T>)
+                        (identifier) @{self.KEY_PROPERTY_TYPE}        ;; Property type (e.g., String, Int, List<T>)
                     )
                     (nullable_type 
                         (user_type 
-                            (identifier) @ctor.param.type
+                            (identifier) @{self.KEY_PROPERTY_TYPE}    ;; Nullable property type (e.g., String?)
                         )
                     )
                 ]
-            )?
+            )
+            (_) @{self.KEY_PROPERTY_DEFAULT}                         ;; Default value or initialization
         )
-    )
-    """
+        """
 
-    OBJECT_QUERY = """
-    (object_declaration
-    (modifiers
-        (class_modifier) @object.modifier
-    )?
-    (identifier) @object.name
-    (delegation_specifiers
-        (delegation_specifier
-            (constructor_invocation
-                (user_type
-                    (identifier) @object.superclass
-                )
+    def _get_ctor_params_query(self) -> str:
+        """
+        Get the primary constructor parameters query.
+        
+        This query extracts primary constructor parameters with their metadata.
+        
+        **Query Pattern:**
+        ```kotlin
+        class User(
+            @Inject private val id: Int,
+            val name: String,
+            val email: String? = null
+        ) { ... }
+        
+        data class Product(
+            val sku: String,
+            @Serializable val price: Double
+        )
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_CTOR_PARAM_ANNOTATION}``: Parameter annotations (e.g., "@Inject", "@Serializable")
+        - ``{self.KEY_CTOR_PARAM_VISIBILITY}``: Parameter visibility ("public", "private", "internal")
+        - ``{self.KEY_CTOR_PARAM_NAME}``: Parameter name (e.g., "id", "name", "email")
+        - ``{self.KEY_PARAM_TYPE}``: Parameter type (e.g., "Int", "String", "String?")
+        - ``{self.KEY_CTOR_PARAM_DEFAULT}``: Default value if specified (e.g., "null")
+        
+        **Example Output:**
+        - Input: ``@Inject private val id: Int``
+        - Captured:
+          - ``{self.KEY_CTOR_PARAM_ANNOTATION} = ["@Inject"]``
+          - ``{self.KEY_CTOR_PARAM_VISIBILITY} = "private"``
+          - ``{self.KEY_CTOR_PARAM_NAME} = "id"``
+          - ``{self.KEY_CTOR_PARAM_TYPE} = "Int"``
+          - ``{self.KEY_CTOR_PARAM_DEFAULT} = ""`` (no default value)
+        
+        **Use Case:** Understanding constructor signatures and parameter requirements.
+        """
+        return f"""
+        ;; Primary constructor parameters query - Captures constructor parameter metadata
+        (primary_constructor
+            (class_parameters 
+                (class_parameter 
+                    (modifiers
+                        (annotation)* @{self.KEY_CTOR_PARAM_ANNOTATION}      ;; Parameter annotations (e.g., @Inject)
+                        (visibility_modifier)? @{self.KEY_CTOR_PARAM_VISIBILITY}  ;; Parameter visibility
+                    )?
+                    (identifier) @{self.KEY_CTOR_PARAM_NAME}                    ;; Parameter name
+                    [
+                        (user_type 
+                            (identifier) @{self.KEY_CTOR_PARAM_TYPE}            ;; Parameter type
+                        )
+                        (nullable_type 
+                            (user_type 
+                                (identifier) @{self.KEY_CTOR_PARAM_TYPE}        ;; Nullable parameter type
+                            )
+                        )
+                    ]
+                )?
             )
         )
-    )?
-)
-    """
+        """
+
+    def _get_object_query(self) -> str:
+        """
+        Get the object declaration query.
+        
+        This query extracts singleton object declarations with their metadata.
+        
+        **Query Pattern:**
+        ```kotlin
+        object Singleton {
+            val instance = "single instance"
+        }
+        
+        data object ComplexForm : FormFactor()
+        
+        object SimpleForm : FormFactor()
+        ```
+        
+        **Captures:**
+        - ``{self.KEY_OBJECT_MODIFIER}``: Object modifiers (e.g., "data object")
+        - ``{self.KEY_OBJECT_NAME}``: Object name (e.g., "Singleton", "ComplexForm", "SimpleForm")
+        - ``{self.KEY_OBJECT_SUPERCLASS}``: Object superclass if any (e.g., "FormFactor")
+        
+        **Example Output:**
+        - Input: ``data object ComplexForm : FormFactor()``
+        - Captured:
+          - ``{self.KEY_OBJECT_MODIFIER} = "data object"``
+          - ``{self.KEY_OBJECT_NAME} = "ComplexForm"``
+          - ``{self.KEY_OBJECT_SUPERCLASS} = "FormFactor"``
+        
+        **Use Case:** Understanding singleton objects and their inheritance relationships.
+        """
+        return f"""
+        ;; Object declaration query - Captures singleton object metadata
+        (object_declaration
+        (modifiers
+            (class_modifier) @{self.KEY_OBJECT_MODIFIER}              ;; Object modifiers (e.g., data object)
+        )?
+        (identifier) @{self.KEY_OBJECT_NAME}                          ;; Object name
+        (delegation_specifiers
+            (delegation_specifier
+                (constructor_invocation
+                    (user_type
+                        (identifier) @{self.KEY_OBJECT_SUPERCLASS}    ;; Object superclass if any
+                    )
+                )
+            )
+        )?
+    )
+        """
+    
+    def get_all_queries_documentation(self) -> dict:
+        """
+        Get comprehensive documentation for all tree-sitter queries.
+        
+        Returns a dictionary containing documentation for each query with examples
+        and capture information.
+        
+        Returns:
+            dict: Dictionary mapping query names to their documentation strings
+            
+        Example:
+            >>> analyzer = KotlinASTAnalyzer()
+            >>> docs = analyzer.get_all_queries_documentation()
+            >>> print(docs['PACKAGE_QUERY'])
+            # Package declaration query documentation...
+        """
+        return {
+            'PACKAGE_QUERY': self._get_package_query(),
+            'IMPORT_QUERY': self._get_import_query(),
+            'HIGH_LEVEL_CLASS_QUERY': self._get_high_level_class_query(),
+            'EXTENDS_IMPLEMENTS_QUERY': self._get_extends_implements_query(),
+            'FUNCTION_QUERY': self._get_function_query(),
+            'MEMBERS_QUERY': self._get_members_query(),
+            'CTOR_PARAMS_QUERY': self._get_ctor_params_query(),
+            'OBJECT_QUERY': self._get_object_query()
+        }
 
     def __init__(self):
         """
@@ -257,29 +591,29 @@ class KotlinASTAnalyzer:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
         print("*" * 4 + "Constructor PARAMS" + "*" * 4)
-        cursor = self._create_query_cursor(self.CTOR_PARAMS_QUERY)
+        cursor = self._create_query_cursor(self._get_ctor_params_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             member_data = VariableData()
             pprint(f"{index}: {match}")
             captures_dict = match[1]
-            if "ctor.param.name" in captures_dict:
-                ctor_params = self._get_node_text(captures_dict["ctor.param.name"][0])
+            if self.KEY_CTOR_PARAM_NAME in captures_dict:
+                ctor_params = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_NAME][0])
                 member_data.name = ctor_params
 
-            if "ctor.param.annotation" in captures_dict:
-                for property_annotation_node in captures_dict["ctor.param.annotation"]:
+            if self.KEY_CTOR_PARAM_ANNOTATION in captures_dict:
+                for property_annotation_node in captures_dict[self.KEY_CTOR_PARAM_ANNOTATION]:
                     annotation = self._get_node_text(property_annotation_node)
                     member_data.annotations.append(annotation)
 
-            if "ctor.param.visibility" in captures_dict:
-                member_data.visibility = self._get_node_text(captures_dict["ctor.param.visibility"][0])
+            if self.KEY_CTOR_PARAM_VISIBILITY in captures_dict:
+                member_data.visibility = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_VISIBILITY][0])
 
-            if "ctor.param.type" in captures_dict:
-                member_data.type = self._get_node_text(captures_dict["ctor.param.type"][0])
+            if self.KEY_CTOR_PARAM_TYPE in captures_dict:
+                member_data.type = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_TYPE][0])
 
-            if "ctor.param.default" in captures_dict:
-                member_data.default_value = self._get_node_text(captures_dict["ctor.param.default"][0])
+            if self.KEY_CTOR_PARAM_DEFAULT in captures_dict:
+                member_data.default_value = self._get_node_text(captures_dict[self.KEY_CTOR_PARAM_DEFAULT][0])
 
             kotlin_analysis.constructor_param_type.append(member_data)
 
@@ -299,28 +633,28 @@ class KotlinASTAnalyzer:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
         print("*" * 4 + "EXTRACTING MEMBERS" + "*" * 4)
-        cursor = self._create_query_cursor(self.MEMBERS_QUERY)
+        cursor = self._create_query_cursor(self._get_members_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             member_data = VariableData()
             pprint(f"{index}: {match}")
             captures_dict = match[1]
-            if "property.annotation" in captures_dict:
-                for property_annotation_node in captures_dict["property.annotation"]:
+            if self.KEY_PROPERTY_ANNOTATION in captures_dict:
+                for property_annotation_node in captures_dict[self.KEY_PROPERTY_ANNOTATION]:
                     annotation = self._get_node_text(property_annotation_node)
                     member_data.annotations.append(annotation)
 
-            if "property.visibility" in captures_dict:
-                member_data.visibility = self._get_node_text(captures_dict["property.visibility"][0])
+            if self.KEY_PROPERTY_VISIBILITY in captures_dict:
+                member_data.visibility = self._get_node_text(captures_dict[self.KEY_PROPERTY_VISIBILITY][0])
 
-            if "property.name" in captures_dict:
-                member_data.name = self._get_node_text(captures_dict["property.name"][0])
+            if self.KEY_PROPERTY_NAME in captures_dict:
+                member_data.name = self._get_node_text(captures_dict[self.KEY_PROPERTY_NAME][0])
 
-            if "property.type" in captures_dict:
-                member_data.type = self._get_node_text(captures_dict["property.type"][0])
+            if self.KEY_PROPERTY_TYPE in captures_dict:
+                member_data.type = self._get_node_text(captures_dict[self.KEY_PROPERTY_TYPE][0])
 
-            if "property.default" in captures_dict:
-                member_data.default_value = self._get_node_text(captures_dict["property.default"][0])
+            if self.KEY_PROPERTY_DEFAULT in captures_dict:
+                member_data.default_value = self._get_node_text(captures_dict[self.KEY_PROPERTY_DEFAULT][0])
 
             kotlin_analysis.members.append(member_data)
 
@@ -340,7 +674,7 @@ class KotlinASTAnalyzer:
         Note:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
-        cursor = self._create_query_cursor(self.PACKAGE_QUERY)
+        cursor = self._create_query_cursor(self._get_package_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
@@ -366,7 +700,7 @@ class KotlinASTAnalyzer:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
         imports = []
-        cursor = self._create_query_cursor(self.IMPORT_QUERY)
+        cursor = self._create_query_cursor(self._get_import_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
@@ -416,40 +750,40 @@ class KotlinASTAnalyzer:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
         print("*" * 4 + "DETAILS " + "*" * 4)
-        cursor = self._create_query_cursor(self.HIGH_LEVEL_CLASS_QUERY)
+        cursor = self._create_query_cursor(self._get_high_level_class_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
             captures_dict = match[1]
-            if "class.annotation" in captures_dict:
+            if self.KEY_CLASS_ANNOTATION in captures_dict:
                 anno_names = []
-                for annotation_node in captures_dict["class.annotation"]:
+                for annotation_node in captures_dict[self.KEY_CLASS_ANNOTATION]:
                     anno = self._get_node_text(annotation_node)
                     print(f"annotation modifier: {anno}")
                     anno_names.append(anno)
                 analysis.annotations = anno_names
 
             # visiblity modifier
-            visibility_modifier = "public" if "class.visibility" not in captures_dict else \
-                (self._get_node_text(captures_dict["class.visibility"][0]))
+            visibility_modifier = "public" if self.KEY_CLASS_VISIBILITY not in captures_dict else \
+                (self._get_node_text(captures_dict[self.KEY_CLASS_VISIBILITY][0]))
             # print(f"visibility_modifier = {visibility_modifier}")
             analysis.visibility = visibility_modifier
 
             # class modifier (data / sealed etc) to get info like 'data class' 'sealed class' etc.
-            if "class.modifier" in captures_dict:
-                class_modifier = self._get_node_text(captures_dict["class.modifier"][0])
+            if self.KEY_CLASS_MODIFIER in captures_dict:
+                class_modifier = self._get_node_text(captures_dict[self.KEY_CLASS_MODIFIER][0])
                 # print(f"class_modifier = {class_modifier}")
                 analysis.type = class_modifier
             # name
-            if "type.name" in captures_dict:
-                interface_name = self._get_node_text(captures_dict["type.name"][0])
+            if self.KEY_TYPE_NAME in captures_dict:
+                interface_name = self._get_node_text(captures_dict[self.KEY_TYPE_NAME][0])
                 # print(f"interface_name = {interface_name}")
                 analysis.name = interface_name
 
-            if "class.body" in captures_dict:
-                # print(type(captures_dict["class.body"]))
-                # print(captures_dict["class.body"][0])
-                self._extract_functions_wq(captures_dict["class.body"][0], analysis)
+            if self.KEY_CLASS_BODY in captures_dict:
+                # print(type(captures_dict[self.KEY_CLASS_BODY]))
+                # print(captures_dict[self.KEY_CLASS_BODY][0])
+                self._extract_functions_wq(captures_dict[self.KEY_CLASS_BODY][0], analysis)
 
     def _extract_parents(self, root_node, kotlin_analysis):
         """
@@ -464,17 +798,17 @@ class KotlinASTAnalyzer:
             kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
         """
         print("*" * 4 + "PARENTS DETAILS " + "*" * 4)
-        cursor = self._create_query_cursor(self.EXTENDS_IMPLEMENTS_QUERY)
+        cursor = self._create_query_cursor(self._get_extends_implements_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
             captures_dict = match[1]
             print(captures_dict)
-            if "extends" in captures_dict:
-                kotlin_analysis.extends = self._get_node_text(captures_dict["extends"][0])
+            if self.KEY_EXTENDS in captures_dict:
+                kotlin_analysis.extends = self._get_node_text(captures_dict[self.KEY_EXTENDS][0])
 
-            if "implements" in captures_dict:
-                kotlin_analysis.implements.append(self._get_node_text(captures_dict["implements"][0]))
+            if self.KEY_IMPLEMENTS in captures_dict:
+                kotlin_analysis.implements.append(self._get_node_text(captures_dict[self.KEY_IMPLEMENTS][0]))
 
     def _extract_functions_wq(self, root_node: Node, analysis: KotlinAnalysisData) -> List[str]:
         """
@@ -495,30 +829,30 @@ class KotlinASTAnalyzer:
             The 'wq' suffix indicates this method uses tree-sitter queries.
         """
         print("*" * 4 + "FUNCTION DETAILS " + "*" * 4)
-        cursor = self._create_query_cursor(self.FUNCTION_QUERY)
+        cursor = self._create_query_cursor(self._get_function_query())
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
             captures_dict = match[1]
             data = FunctionData()
 
-            if "function.annotation" in captures_dict:
-                for annotation_node in captures_dict["function.annotation"]:
+            if self.KEY_FUNCTION_ANNOTATION in captures_dict:
+                for annotation_node in captures_dict[self.KEY_FUNCTION_ANNOTATION]:
                     data.annotations.append(self._get_node_text(annotation_node))
 
-            if "function.name" in captures_dict:
-                data.name = self._get_node_text(captures_dict["function.name"][0])
+            if self.KEY_FUNCTION_NAME in captures_dict:
+                data.name = self._get_node_text(captures_dict[self.KEY_FUNCTION_NAME][0])
 
-            if "function.visibility" in captures_dict:
-                data.visibility = self._get_node_text(captures_dict["function.visibility"][0])
+            if self.KEY_FUNCTION_VISIBILITY in captures_dict:
+                data.visibility = self._get_node_text(captures_dict[self.KEY_FUNCTION_VISIBILITY][0])
 
-            if "function.params" in captures_dict:
-                for param_node in captures_dict["function.params"]:
+            if self.KEY_FUNCTION_PARAMS in captures_dict:
+                for param_node in captures_dict[self.KEY_FUNCTION_PARAMS]:
                     params = self._get_node_text(param_node)
                     data.parameters = params
 
-            if "function.return_type" in captures_dict:
-                data.return_type = self._get_node_text(captures_dict["function.return_type"][0])
+            if self.KEY_FUNCTION_RETURN_TYPE in captures_dict:
+                data.return_type = self._get_node_text(captures_dict[self.KEY_FUNCTION_RETURN_TYPE][0])
 
             analysis.functions.append(data)
 
@@ -534,8 +868,8 @@ class KotlinASTAnalyzer:
             str: The import statement text if found, empty string otherwise
         """
         print("*" * 4 + "IMPORTS" + "*" * 4)
-        if "import" in captures_dict:
-            import_name = self._get_node_text(captures_dict["import"][0])
+        if self.KEY_IMPORT in captures_dict:
+            import_name = self._get_node_text(captures_dict[self.KEY_IMPORT][0])
             print(f"{index}: Import: {import_name}")
             return import_name
         else:
@@ -553,8 +887,8 @@ class KotlinASTAnalyzer:
             str: The package name text if found, empty string otherwise
         """
         print("*" * 4 + "PACKAGE NAME" + "*" * 4)
-        if "package" in captures_dict:
-            package_name = self._get_node_text(captures_dict["package"][0])
+        if self.KEY_PACKAGE in captures_dict:
+            package_name = self._get_node_text(captures_dict[self.KEY_PACKAGE][0])
             print(f"{index}: Package: {package_name}")
             return package_name
         else:
@@ -738,6 +1072,7 @@ sealed class FormFactor
 
 data object ComplexForm : FormFactor()
 object SimpleForm : FormFactor()
+data class CustomForm(val customization: Float) : FormFactor()
     """
 
     source_code_4 = """
@@ -750,7 +1085,7 @@ object SimpleForm : FormFactor()
 )
     """
     KotlinASTAnalyzer().analyze_kotlin_file(file_path=file_path_1,
-                                            source_bytes=source_code_1.encode("utf-8"),
+                                            source_bytes=source_code_3.encode("utf-8"),
                                             print_debug_info=True)
 
 
