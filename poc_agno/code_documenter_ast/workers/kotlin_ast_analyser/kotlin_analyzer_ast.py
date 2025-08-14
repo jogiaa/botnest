@@ -9,6 +9,26 @@ from poc_agno.code_documenter_ast.workers.kotlin_ast_analyser.model import Kotli
 
 
 class KotlinASTAnalyzer:
+    """
+    A Kotlin Abstract Syntax Tree (AST) analyzer using tree-sitter.
+    
+    This class provides comprehensive analysis of Kotlin source code by parsing
+    the AST and extracting structural information including classes, functions,
+    properties, annotations, and inheritance relationships.
+    
+    Attributes:
+        language (Language): The tree-sitter language object for Kotlin
+        parser (Parser): The tree-sitter parser instance
+        PACKAGE_QUERY (str): Tree-sitter query for package declarations
+        IMPORT_QUERY (str): Tree-sitter query for import statements
+        HIGH_LEVEL_CLASS_QUERY (str): Tree-sitter query for class declarations
+        EXTENDS_IMPLEMENTS_QUERY (str): Tree-sitter query for inheritance
+        FUNCTION_QUERY (str): Tree-sitter query for function declarations
+        MEMBERS_QUERY (str): Tree-sitter query for property declarations
+        CTOR_PARAMS_QUERY (str): Tree-sitter query for constructor parameters
+        OBJECT_QUERY (str): Tree-sitter query for object declarations
+    """
+
     PACKAGE_QUERY = """
     ;; Package declaration
     (package_header (qualified_identifier) @package)
@@ -128,7 +148,11 @@ class KotlinASTAnalyzer:
 
     def __init__(self):
         """
-        Initialize the KotlinASTAnalyzer class with language and parser.
+        Sets up the tree-sitter language object for Kotlin and initializes
+        the parser with the appropriate language support.
+        
+        Raises:
+            Exception: If tree-sitter Kotlin language cannot be loaded
         """
         self.language = Language(tree_sitter_kotlin.language())
         self.parser = Parser()
@@ -139,7 +163,31 @@ class KotlinASTAnalyzer:
                             print_debug_info: bool = False
                             ) -> KotlinAnalysisData:
         """
-        Analyze a Kotlin code file.
+        Analyze a Kotlin code file and extract structural information.
+        
+        This method parses the Kotlin source code using tree-sitter and extracts
+        comprehensive information about the code structure including packages,
+        imports, classes, functions, properties, and inheritance relationships.
+        
+        Args:
+            file_path (str): Path to the Kotlin source file (for reference)
+            source_bytes (bytes): Raw bytes of the Kotlin source code
+            print_debug_info (bool, optional): Whether to print debug information
+                including the full AST tree structure. Defaults to False.
+        
+        Returns:
+            KotlinAnalysisData: A data object containing all extracted information
+                about the Kotlin code structure.
+        
+        Raises:
+            Exception: If parsing fails or an error occurs during analysis
+        
+        Example:
+            >>> analyzer = KotlinASTAnalyzer()
+            >>> with open('MyClass.kt', 'rb') as f:
+            ...     source_bytes = f.read()
+            ...     result = analyzer.analyze_kotlin_file('MyClass.kt', source_bytes)
+            ...     print(f"Found class: {result.name}")
         """
         kotlin_analysis = KotlinAnalysisData()
         try:
@@ -164,6 +212,20 @@ class KotlinASTAnalyzer:
         return kotlin_analysis
 
     def _start(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
+        """
+        Start the analysis process by extracting all major components.
+        
+        This private method orchestrates the extraction of all major code elements
+        from the AST root node and populates the analysis data object.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
+        
+        Note:
+            This method handles errors gracefully and continues processing even if
+            individual extraction methods fail.
+        """
         try:
             kotlin_analysis.imports = self._extract_imports_wq(root_node)
             kotlin_analysis.package_name = self._extract_package_name_wq(root_node)
@@ -180,6 +242,20 @@ class KotlinASTAnalyzer:
             print("=" * 4 + "ERROR" + "=" * 40)
 
     def _extract_constructor_params_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
+        """
+        Extract constructor parameters using tree-sitter queries.
+        
+        This method uses the CTOR_PARAMS_QUERY to find and extract information
+        about primary constructor parameters including their names, types,
+        annotations, visibility modifiers, and default values.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         print("*" * 4 + "Constructor PARAMS" + "*" * 4)
         cursor = self._create_query_cursor(self.CTOR_PARAMS_QUERY)
         matches = cursor.matches(root_node)
@@ -208,6 +284,20 @@ class KotlinASTAnalyzer:
             kotlin_analysis.constructor_param_type.append(member_data)
 
     def _extract_members_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
+        """
+        Extract class members (properties) using tree-sitter queries.
+        
+        This method uses the MEMBERS_QUERY to find and extract information
+        about class properties including their names, types, annotations,
+        visibility modifiers, and default values.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         print("*" * 4 + "EXTRACTING MEMBERS" + "*" * 4)
         cursor = self._create_query_cursor(self.MEMBERS_QUERY)
         matches = cursor.matches(root_node)
@@ -235,6 +325,21 @@ class KotlinASTAnalyzer:
             kotlin_analysis.members.append(member_data)
 
     def _extract_package_name_wq(self, root_node: Node) -> Optional[str]:
+        """
+        Extract package name using tree-sitter queries.
+        
+        This method uses the PACKAGE_QUERY to find and extract the package
+        declaration from the Kotlin source code.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+        
+        Returns:
+            Optional[str]: The package name if found, empty string otherwise
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         cursor = self._create_query_cursor(self.PACKAGE_QUERY)
         matches = cursor.matches(root_node)
         for index, match in enumerate(matches):
@@ -245,6 +350,21 @@ class KotlinASTAnalyzer:
         return ""
 
     def _extract_imports_wq(self, root_node: Node) -> List[str]:
+        """
+        Extract import statements using tree-sitter queries.
+        
+        This method uses the IMPORT_QUERY to find and extract all import
+        statements from the Kotlin source code.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+        
+        Returns:
+            List[str]: List of import statements found in the code
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         imports = []
         cursor = self._create_query_cursor(self.IMPORT_QUERY)
         matches = cursor.matches(root_node)
@@ -258,6 +378,18 @@ class KotlinASTAnalyzer:
         return imports
 
     def _extract_type(self, node: Node):
+        """
+        Recursively extract the type of a declaration node.
+        
+        This method traverses the AST to find the type of a declaration,
+        such as 'class', 'interface', or 'object'.
+        
+        Args:
+            node (Node): The AST node to analyze
+        
+        Returns:
+            Optional[str]: The type of the declaration if found, None otherwise
+        """
         if node.type == "class_declaration":
             for child in node.children:
                 if child.type in ("class", "interface"):
@@ -269,6 +401,20 @@ class KotlinASTAnalyzer:
         return None
 
     def _extract_high_level_declaration_wq(self, root_node: Node, analysis: KotlinAnalysisData):
+        """
+        Extract high-level class/interface declaration details using tree-sitter queries.
+        
+        This method uses the HIGH_LEVEL_CLASS_QUERY to extract comprehensive information
+        about class declarations including annotations, visibility modifiers, class modifiers,
+        names, and function definitions within the class body.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            analysis (KotlinAnalysisData): The analysis data object to populate
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         print("*" * 4 + "DETAILS " + "*" * 4)
         cursor = self._create_query_cursor(self.HIGH_LEVEL_CLASS_QUERY)
         matches = cursor.matches(root_node)
@@ -306,6 +452,17 @@ class KotlinASTAnalyzer:
                 self._extract_functions_wq(captures_dict["class.body"][0], analysis)
 
     def _extract_parents(self, root_node, kotlin_analysis):
+        """
+        Extract inheritance relationships using tree-sitter queries.
+        
+        This method uses the EXTENDS_IMPLEMENTS_QUERY to find and extract
+        information about class inheritance (extends) and interface
+        implementations (implements).
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            kotlin_analysis (KotlinAnalysisData): The analysis data object to populate
+        """
         print("*" * 4 + "PARENTS DETAILS " + "*" * 4)
         cursor = self._create_query_cursor(self.EXTENDS_IMPLEMENTS_QUERY)
         matches = cursor.matches(root_node)
@@ -320,6 +477,23 @@ class KotlinASTAnalyzer:
                 kotlin_analysis.implements.append(self._get_node_text(captures_dict["implements"][0]))
 
     def _extract_functions_wq(self, root_node: Node, analysis: KotlinAnalysisData) -> List[str]:
+        """
+        Extract function declarations using tree-sitter queries.
+        
+        This method uses the FUNCTION_QUERY to find and extract information
+        about function declarations including annotations, names, visibility,
+        parameters, and return types.
+        
+        Args:
+            root_node (Node): The root node of the parsed AST
+            analysis (KotlinAnalysisData): The analysis data object to populate
+        
+        Returns:
+            List[str]: List of function names extracted (for backward compatibility)
+        
+        Note:
+            The 'wq' suffix indicates this method uses tree-sitter queries.
+        """
         print("*" * 4 + "FUNCTION DETAILS " + "*" * 4)
         cursor = self._create_query_cursor(self.FUNCTION_QUERY)
         matches = cursor.matches(root_node)
@@ -349,6 +523,16 @@ class KotlinASTAnalyzer:
             analysis.functions.append(data)
 
     def _extract_imports(self, captures_dict, index):
+        """
+        Extract import statement from capture dictionary.
+        
+        Args:
+            captures_dict (dict): Dictionary containing captured nodes from tree-sitter query
+            index (int): Index of the current match for debugging purposes
+        
+        Returns:
+            str: The import statement text if found, empty string otherwise
+        """
         print("*" * 4 + "IMPORTS" + "*" * 4)
         if "import" in captures_dict:
             import_name = self._get_node_text(captures_dict["import"][0])
@@ -358,6 +542,16 @@ class KotlinASTAnalyzer:
             return ""
 
     def _extract_package_name(self, captures_dict, index) -> str:
+        """
+        Extract package name from capture dictionary.
+        
+        Args:
+            captures_dict (dict): Dictionary containing captured nodes from tree-sitter query
+            index (int): Index of the current match for debugging purposes
+        
+        Returns:
+            str: The package name text if found, empty string otherwise
+        """
         print("*" * 4 + "PACKAGE NAME" + "*" * 4)
         if "package" in captures_dict:
             package_name = self._get_node_text(captures_dict["package"][0])
@@ -367,6 +561,18 @@ class KotlinASTAnalyzer:
             return ""
 
     def _create_query_cursor(self, query_text: str) -> QueryCursor:
+        """
+        Create a tree-sitter query cursor for executing queries.
+        
+        Args:
+            query_text (str): The tree-sitter query string to compile
+        
+        Returns:
+            QueryCursor: A cursor for executing the compiled query
+        
+        Raises:
+            Exception: If query compilation fails
+        """
         try:
             query = Query(self.language, query_text)
             return QueryCursor(query)
@@ -376,10 +582,31 @@ class KotlinASTAnalyzer:
             print("*" * 4 + "ERROR" + "*" * 4)
 
     def _get_node_text(self, node) -> str:
-        """Get text content of a node."""
+        """
+        Get text content of a tree-sitter node.
+        
+        Args:
+            node (Node): The tree-sitter node to extract text from
+        
+        Returns:
+            str: The decoded text content of the node, or empty string if node is None
+        """
         return node.text.decode('utf-8') if node else ""
 
     def _print_tree(self, source_bytes: bytes, node=None, indent=0, max_lines=2000):
+        """
+        Print a visual representation of the AST tree structure.
+        
+        This method recursively traverses the AST and prints each node with
+        proper indentation to show the tree hierarchy. Useful for debugging
+        and understanding the structure of parsed Kotlin code.
+        
+        Args:
+            source_bytes (bytes): The original source code bytes for text extraction
+            node (Node, optional): The current node to print. Defaults to None.
+            indent (int, optional): Current indentation level. Defaults to 0.
+            max_lines (int, optional): Maximum lines to print. Defaults to 2000.
+        """
         prefix = "  " * indent
         text = self._node_text(source_bytes, node).strip().splitlines()
         sample = text[0][:80] + ("..." if len(text[0]) > 80 else "") if text else ""
@@ -388,10 +615,36 @@ class KotlinASTAnalyzer:
             self._print_tree(source_bytes, child, indent + 1)
 
     def _node_text(self, source_bytes: bytes, node) -> str:
+        """
+        Extract text content from a node using byte offsets.
+        
+        This method extracts the text content of a tree-sitter node by using
+        the node's start and end byte positions to slice the original source bytes.
+        
+        Args:
+            source_bytes (bytes): The original source code bytes
+            node (Node): The tree-sitter node to extract text from
+        
+        Returns:
+            str: The decoded text content of the node
+        """
         return source_bytes[node.start_byte:node.end_byte].decode("utf-8")
 
 
 def run_():
+    """
+    Demo function showcasing the KotlinASTAnalyzer capabilities.
+    
+    This function demonstrates how to use the KotlinASTAnalyzer class
+    by analyzing various sample Kotlin code snippets including:
+    - Advanced classes with generics and annotations
+    - Interfaces with generics
+    - Sealed classes and data objects
+    - Private data classes
+    
+    The function creates sample Kotlin code and runs it through the analyzer
+    to show the extraction capabilities.
+    """
     print("--- Sample 1: Advanced Class Example with Generics & Annotations ---")
     file_path_1 = "src/main/kotlin/org/jay/sample/computing/ProcessorDelay.kt"
     source_code_1 = """
