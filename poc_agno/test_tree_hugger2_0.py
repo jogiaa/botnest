@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 import tempfile
 import os
 
-from code_documenter.workers.tree_hugger2_0 import (
+from code_documenter_ast.workers.tree_hugger2_0 import (
     KotlinASTAnalyzer,
     KotlinAnalysis,
     FunctionData,

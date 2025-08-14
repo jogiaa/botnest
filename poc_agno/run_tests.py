@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test runner script for tree_hugger2.0.py unit tests.
+Test runner script for kotlin_analyzer_ast.py unit tests.
 This script runs all tests and provides a summary of results.
 """
 
@@ -27,7 +27,7 @@ def run_tests():
 def main():
     """Main function to run tests."""
     print("=" * 60)
-    print("Running Unit Tests for tree_hugger2.0.py")
+    print("Running Unit Tests for kotlin_analyzer_ast.py")
     print("=" * 60)
     
     try:

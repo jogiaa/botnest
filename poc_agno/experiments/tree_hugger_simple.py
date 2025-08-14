@@ -99,36 +99,6 @@ def find_package_name(root_node: Node) -> str:
                     if nodes and len(nodes) > 0:
                         # Return the first match
                         return nodes[0].text.decode("utf-8")
-                # print(type(node))
-                # for key, value in node.items():
-                #     print(f"{key} = {value}")
-                #     print(type(value))
-                #     for item in value:
-                #         print(type(item))
-                #         print(item)
-                #         return item.text.decode("utf-8")
-
-            # print("-^-" * 30)
-            # captures = cursor.captures(root_node)
-            # for capture in captures:
-            #     print(type(capture))
-            #     pprint(capture)
-            # print("-*-" * 30)
-            # for capture in match.captures:
-            #     capture_name = query.capture_names[capture[1]]
-            #     node = capture[0]
-            #     text = node.text.decode("utf-8") if node.text else ""
-            #
-            #     print(f"Found qualified_identifier: '{text}'")
-            #
-            #     # Check if this qualified_identifier is in a package_header
-            #     parent = node.parent
-            #     if parent and parent.type == "package_header":
-            #         print(f"  -> This is in a package_header, using as package name")
-            #         return text.strip()
-            #     else:
-            #         print(f"  -> This is not in package_header (parent: {parent.type if parent else 'None'})")
-
 
         except Exception as e:
             print(f"  Query failed---->: {e}")
@@ -192,7 +162,7 @@ def debug_tree_structure_detailed(root_node, kotlin_code: str) -> None:
 
 
 def run_():
-    analyze_kotlin_codebase("mock_kotlin_project_advanced")
+    analyze_kotlin_codebase("../workflows/v4/mock_kotlin_project_advanced")
 
 
 if __name__ == "__main__":

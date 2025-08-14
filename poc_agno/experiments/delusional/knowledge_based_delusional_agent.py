@@ -12,9 +12,10 @@ from pydantic import BaseModel
 
 from poc_agno.llm_model_config import llm_model
 from poc_agno.memory.chroma_code_context import funny_collection
+from poc_agno.utils.load_instructions import load_yaml_instructions
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-print(PROJECT_ROOT)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
+
 # TextKnowledgebase reads text files from a given path and saves them in chromadb
 # so it needs a path to text files in order to work
 # knowledge = TextKnowledgeBase(
@@ -52,14 +53,15 @@ class DocumentedResult(BaseModel):
 
 
 def read_instructions() -> str:
-    with open("instructions.yaml", "r") as f:
-        instructions = yaml.safe_load(f)
-        print(instructions)
-        return instructions
+    instructions = load_yaml_instructions(f"{Path(__file__).resolve().parent}/instructions.yaml")
+    print(instructions)
+    return instructions
 
 
 def chroma_retriever(agent, query, num_documents=None, **kwargs):
-    # Use the ChromaDb client directly to search your collection
+    """
+        Use the ChromaDb client directly to search your collection
+    """
     # Return a list of dicts with 'content' keys
     results = funny_collection.query(query, n_results=num_documents or 5)
     print("***************")
@@ -71,14 +73,11 @@ def chroma_retriever(agent, query, num_documents=None, **kwargs):
     return ddd
 
 
-knowledgeable_code_documentation_agent = Agent(
+delusional_agent = Agent(
     # name="Knowledge Agent",
     # role="You are a knowledge based agent. Show all of your knowledge",
     model=llm_model,
-    instructions=dedent("""
-     - "You are a retrieval bot. When asked a question, you must answer ONLY with the exact content retrieved from the knowledge base, word for word.",
-    - "Do not add any extra information, reasoning, or explanation."
-    """),
+    instructions=read_instructions(),
     knowledge=knowledge_base,
     search_knowledge=True,
     # reasoning=True,
@@ -97,11 +96,8 @@ async def main():
     # pprint(vector_db_chroma.search(query="color of sky"))
 
     # Ask the agent a question
-    await knowledgeable_code_documentation_agent.aprint_response("Do men like color of sky?", markdown=True)
+    await delusional_agent.aprint_response("Do men like color of sky?", markdown=True)
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-# if __name__ == "__main__":
-#     pprint(knowledgeable_code_documentation_agent.run())

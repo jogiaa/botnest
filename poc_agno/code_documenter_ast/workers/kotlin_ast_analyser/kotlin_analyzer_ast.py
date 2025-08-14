@@ -1,47 +1,11 @@
-from dataclasses import dataclass, field
 from pprint import pprint
 from typing import List, Optional
 
 import tree_sitter_kotlin
 from tree_sitter import Language, Parser, Node, Query, QueryCursor
 
-
-@dataclass
-class FunctionData:
-    name: str = ""
-    parameters: str = ""
-    annotations: List[str] = field(default_factory=list)
-    visibility: str = field(default="public")
-    return_type: str = field(default="Unit")
-
-
-@dataclass
-class VariableData:
-    name: str = ""
-    type: str = ""
-    annotations: List[str] = field(default_factory=list)
-    visibility: str = field(default="public")
-    default_value: Optional[str] = None
-
-
-@dataclass
-class KotlinAnalysis:
-    """Data class to hold all extracted information."""
-    filename: str = ""
-    package_name: str = ""
-    imports: List[str] = field(default_factory=list)
-    name: str = ""
-    type: str = ""  # class|interface|data class|enum|object|sealed class etc.
-    annotations: List[str] = field(default_factory=list)
-    visibility: str = "public"  # private | internal | public
-    members: List[VariableData] = field(default_factory=list)
-    constructor_param_type: List[VariableData] = field(default_factory=list)
-    extends: str = ""
-    implements: List[str] = field(default_factory=list)
-    functions: List[FunctionData] = field(
-        default_factory=list)  # [{'name','visibility','return_type','param_types'}, ...]
-    uses: List[str] = field(default_factory=list)
-    used_by: List[str] = field(default_factory=list)
+from poc_agno.code_documenter_ast.workers.kotlin_ast_analyser.model import KotlinAnalysisData, VariableData, \
+    FunctionData
 
 
 class KotlinASTAnalyzer:
@@ -160,7 +124,6 @@ class KotlinASTAnalyzer:
         )
     )?
 )
-
     """
 
     def __init__(self):
@@ -174,11 +137,11 @@ class KotlinASTAnalyzer:
     def analyze_kotlin_file(self, file_path: str,
                             source_bytes: bytes,
                             print_debug_info: bool = False
-                            ) -> KotlinAnalysis:
+                            ) -> KotlinAnalysisData:
         """
         Analyze a Kotlin code file.
         """
-        kotlin_analysis = KotlinAnalysis()
+        kotlin_analysis = KotlinAnalysisData()
         try:
             tree = self.parser.parse(source_bytes)
             root_node = tree.root_node
@@ -200,7 +163,7 @@ class KotlinASTAnalyzer:
 
         return kotlin_analysis
 
-    def _start(self, root_node: Node, kotlin_analysis: KotlinAnalysis):
+    def _start(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         try:
             kotlin_analysis.imports = self._extract_imports_wq(root_node)
             kotlin_analysis.package_name = self._extract_package_name_wq(root_node)
@@ -216,7 +179,7 @@ class KotlinASTAnalyzer:
             print(err)
             print("=" * 4 + "ERROR" + "=" * 40)
 
-    def _extract_constructor_params_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysis):
+    def _extract_constructor_params_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         print("*" * 4 + "Constructor PARAMS" + "*" * 4)
         cursor = self._create_query_cursor(self.CTOR_PARAMS_QUERY)
         matches = cursor.matches(root_node)
@@ -244,7 +207,7 @@ class KotlinASTAnalyzer:
 
             kotlin_analysis.constructor_param_type.append(member_data)
 
-    def _extract_members_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysis):
+    def _extract_members_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         print("*" * 4 + "EXTRACTING MEMBERS" + "*" * 4)
         cursor = self._create_query_cursor(self.MEMBERS_QUERY)
         matches = cursor.matches(root_node)
@@ -305,7 +268,7 @@ class KotlinASTAnalyzer:
                 return result
         return None
 
-    def _extract_high_level_declaration_wq(self, root_node: Node, analysis: KotlinAnalysis):
+    def _extract_high_level_declaration_wq(self, root_node: Node, analysis: KotlinAnalysisData):
         print("*" * 4 + "DETAILS " + "*" * 4)
         cursor = self._create_query_cursor(self.HIGH_LEVEL_CLASS_QUERY)
         matches = cursor.matches(root_node)
@@ -356,7 +319,7 @@ class KotlinASTAnalyzer:
             if "implements" in captures_dict:
                 kotlin_analysis.implements.append(self._get_node_text(captures_dict["implements"][0]))
 
-    def _extract_functions_wq(self, root_node: Node, analysis: KotlinAnalysis) -> List[str]:
+    def _extract_functions_wq(self, root_node: Node, analysis: KotlinAnalysisData) -> List[str]:
         print("*" * 4 + "FUNCTION DETAILS " + "*" * 4)
         cursor = self._create_query_cursor(self.FUNCTION_QUERY)
         matches = cursor.matches(root_node)
@@ -534,7 +497,7 @@ object SimpleForm : FormFactor()
 )
     """
     KotlinASTAnalyzer().analyze_kotlin_file(file_path=file_path_1,
-                                            source_bytes=source_code_3.encode("utf-8"),
+                                            source_bytes=source_code_1.encode("utf-8"),
                                             print_debug_info=True)
 
 

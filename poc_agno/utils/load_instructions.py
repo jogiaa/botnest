@@ -1,7 +1,9 @@
-from ruamel.yaml import YAML
 from io import StringIO
 
-def load_agent_instructions(filepath):
+from ruamel.yaml import YAML
+
+
+def load_yaml_instructions(filepath) -> str | None:
     """
     Loads a YAML file using ruamel.yaml to preserve its original structure,
     including comments and formatting, for direct use as agent instructions.
@@ -24,7 +26,7 @@ def load_agent_instructions(filepath):
 if __name__ == "__main__":
 
     # Load the instructions
-    agent_instructions = load_agent_instructions('instructions.yaml')
+    agent_instructions = load_yaml_instructions('../experiments/extras/documentation_instructions.yaml')
 
     if agent_instructions:
         print("\n--- Raw (structured) instructions object ---")
