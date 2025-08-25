@@ -1,11 +1,12 @@
+import traceback
 from pprint import pprint
 from typing import List, Optional
 
 import tree_sitter_kotlin
 from tree_sitter import Language, Parser, Node, Query, QueryCursor
 
-from poc_agno.code_documenter_ast.workers.kotlin_ast_analyser.model import KotlinAnalysisData, VariableData, \
-    FunctionData
+from poc_agno.code_documenter_ast.workers.kotlin_ast_analyser.model import KotlinAnalysisData, FunctionData, \
+    VariableData
 
 
 class KotlinASTAnalyzer:
@@ -57,7 +58,13 @@ class KotlinASTAnalyzer:
     KEY_FUNCTION_ANNOTATION = "function.annotation"  # Function annotation capture
     KEY_FUNCTION_VISIBILITY = "function.visibility"  # Function visibility capture
     KEY_FUNCTION_NAME = "function.name"        # Function name capture
+
     KEY_FUNCTION_PARAMS = "function.params"    # Function parameters capture
+    KEY_FUNCTION_PARAM_NAME = "function.param.name"
+    KEY_FUNCTION_PARAM_TYPE = "function.param.type"
+    KEY_FUNCTION_PARAM_ANNOTATION = "function.param..annotation"
+    KEY_FUNCTION_PARAM_DEFAULT_VALUE = "function.param.default.value"
+
     KEY_FUNCTION_RETURN_TYPE = "function.return_type"  # Function return type capture
     KEY_PROPERTY_ANNOTATION = "property.annotation"    # Property annotation capture
     KEY_PROPERTY_VISIBILITY = "property.visibility"    # Property visibility capture
@@ -70,6 +77,13 @@ class KotlinASTAnalyzer:
     KEY_CTOR_PARAM_TYPE = "ctor.param.type"    # Constructor parameter type capture
     KEY_CTOR_PARAM_DEFAULT = "ctor.param.default"  # Constructor parameter default capture
     KEY_DECLARATION = "declaration"
+    KEY_USER_TYPE_NAME = "user.type.name"
+
+    KOTLIN_BUILTIN_TYPES = {
+        "Int", "Long", "Short", "Byte", "Float", "Double", "Char", "Boolean", "Unit",
+        "String", "Any", "Nothing", "Array", "List", "MutableList", "Set", "Map",
+        "MutableSet", "MutableMap"
+    }
 
     def _get_package_query(self) -> str:
         """
@@ -421,6 +435,24 @@ class KotlinASTAnalyzer:
         )
         """
 
+    def _get_user_type_query(self):
+        return f"""
+        ;; Match all type usages
+        (user_type 
+            (identifier) @{self.KEY_USER_TYPE_NAME}
+        )
+        """
+        # ;; Generics like List<MyType>
+        # (type_arguments
+        #     (user_type
+        #         (identifier) @{self.KEY_USER_TYPE_NAME}
+        #     )
+        # )
+        #
+        # ;; Nested identifiers inside generics (Map<String, MyType>)
+        # ;; (type_identifier) @{self.KEY_USER_TYPE_NAME}
+        # """
+
     def __init__(self):
         """
         Sets up the tree-sitter language object for Kotlin and initializes
@@ -482,7 +514,8 @@ class KotlinASTAnalyzer:
             return kotlin_analysis
         except Exception as err:
             print("*" * 4 + "ERROR" + "*" * 4)
-            print(err)
+            print(f"{err.__class__.__name__}: {err}")  # exception type + message
+            traceback.print_exc()  # <-- this prints the full stack trace
             print("*" * 4 + "ERROR" + "*" * 4)
 
 
@@ -511,10 +544,99 @@ class KotlinASTAnalyzer:
                 self._extract_parents(declaration_node, kotlin_analysis)
                 self._extract_members_wq(declaration_node, kotlin_analysis)
                 self._extract_constructor_params_wq(declaration_node, kotlin_analysis)
-
+                self._extract_classes_used_wq(declaration_node, kotlin_analysis)
                 analysis_data.append(kotlin_analysis)
 
         return analysis_data
+
+    def _extract_classes_used_wq(self, declaration_node, kotlin_analysis):
+        print("*" * 4 + "User types" + "*" * 4)
+        cursor = self._create_query_cursor(self._get_user_type_query())
+        matches = cursor.matches(declaration_node)
+        found_types = set()
+
+        for index, match in matches:
+            captures_dict = match
+            if captures_dict:
+                if self.KEY_USER_TYPE_NAME in captures_dict:
+                    type_name = self._get_node_text(captures_dict[self.KEY_USER_TYPE_NAME][0])
+
+                    # Skip built-in Kotlin types
+                    if type_name in self.KOTLIN_BUILTIN_TYPES:
+                        continue
+
+                    fq_name = self._resolve_fully_qualified(type_name, kotlin_analysis)
+
+                    # Skip self-references (class shouldn't list itself as "used")
+                    if fq_name == kotlin_analysis.package_name + "." + kotlin_analysis.name:
+                        continue
+
+                    found_types.add(fq_name)
+
+        # Merge into existing uses
+        kotlin_analysis.uses = sorted(set(kotlin_analysis.uses).union(found_types))
+
+        self._extract_types_from_members_and_functions(kotlin_analysis)
+
+    def _resolve_fully_qualified(self,type_name: str, kotlin_analysis: KotlinAnalysisData) -> str:
+        """
+        Resolve the fully qualified name of a type based on the package and imports.
+        """
+        # 1. Direct import match
+        for imp in kotlin_analysis.imports:
+            if imp.endswith("." + type_name):
+                return imp
+
+        # 2. Wildcard import
+        for imp in kotlin_analysis.imports:
+            if imp.endswith(".*"):
+                return imp[:-2] + "." + type_name
+
+        # 3. Same package assumption
+        if kotlin_analysis.package_name:
+            return kotlin_analysis.package_name + "." + type_name
+
+        # 4. Fallback
+        return type_name
+
+    def _extract_types_from_members_and_functions(self,kotlin_analysis: KotlinAnalysisData):
+        """
+        Ensure member variables, constructor params, and function signatures contribute to uses.
+        Excludes built-in types and self-references.
+        """
+        found_types = set(kotlin_analysis.uses)
+        self_fq_name = kotlin_analysis.package_name + "." + kotlin_analysis.name
+
+        # Check member variable types
+        for member in kotlin_analysis.members:
+            if member.type and member.type not in self.KOTLIN_BUILTIN_TYPES:
+                fq = self._resolve_fully_qualified(member.type, kotlin_analysis)
+                if fq != self_fq_name:
+                    found_types.add(fq)
+
+        # Check constructor param types
+        for param in kotlin_analysis.constructor_param_type:
+            if param.type and param.type not in self.KOTLIN_BUILTIN_TYPES:
+                fq = self._resolve_fully_qualified(param.type, kotlin_analysis)
+                if fq != self_fq_name:
+                    found_types.add(fq)
+
+        # Check function return + param types
+        for fn in kotlin_analysis.functions:
+            # Return type
+            if fn.return_type and fn.return_type not in self.KOTLIN_BUILTIN_TYPES:
+                fq = self._resolve_fully_qualified(fn.return_type, kotlin_analysis)
+                if fq != self_fq_name:
+                    found_types.add(fq)
+
+            # Parameter types
+            for param in fn.parameters:
+                if param.type and param.type not in self.KOTLIN_BUILTIN_TYPES:
+                    fq = self._resolve_fully_qualified(param.type, kotlin_analysis)
+                    if fq != self_fq_name:
+                        found_types.add(fq)
+
+        kotlin_analysis.uses = sorted(found_types)
 
     def _extract_constructor_params_wq(self, root_node: Node, kotlin_analysis: KotlinAnalysisData):
         """
@@ -778,27 +900,76 @@ class KotlinASTAnalyzer:
         for index, match in enumerate(matches):
             pprint(f"{index}: {match}")
             captures_dict = match[1]
-            data = FunctionData()
+            function_data = FunctionData()
 
             if self.KEY_FUNCTION_ANNOTATION in captures_dict:
                 for annotation_node in captures_dict[self.KEY_FUNCTION_ANNOTATION]:
-                    data.annotations.append(self._get_node_text(annotation_node))
+                    function_data.annotations.append(self._get_node_text(annotation_node))
 
             if self.KEY_FUNCTION_NAME in captures_dict:
-                data.name = self._get_node_text(captures_dict[self.KEY_FUNCTION_NAME][0])
+                function_data.name = self._get_node_text(captures_dict[self.KEY_FUNCTION_NAME][0])
 
             if self.KEY_FUNCTION_VISIBILITY in captures_dict:
-                data.visibility = self._get_node_text(captures_dict[self.KEY_FUNCTION_VISIBILITY][0])
+                function_data.visibility = self._get_node_text(captures_dict[self.KEY_FUNCTION_VISIBILITY][0])
 
             if self.KEY_FUNCTION_PARAMS in captures_dict:
                 for param_node in captures_dict[self.KEY_FUNCTION_PARAMS]:
-                    params = self._get_node_text(param_node)
-                    data.parameters = params
+                    pprint(f"-=-=-=-=-=-=-={index}-=-=-=-: {param_node}")
+                    cursor_small = self._create_query_cursor(f"""
+                        (function_value_parameters
+                            (parameter_modifiers
+                                (annotation
+                                    (user_type
+                                        (identifier) @{self.KEY_FUNCTION_PARAM_ANNOTATION}
+                                    )
+                                )
+                            )?
+                            (parameter
+                                (identifier) @{self.KEY_FUNCTION_PARAM_NAME}
+                                [
+                                  (user_type (identifier) @{self.KEY_FUNCTION_PARAM_TYPE})
+                                  (nullable_type (user_type (identifier) @{self.KEY_FUNCTION_PARAM_TYPE}))
+                                ]?
+                            )
+                        )
+                    """)
+
+                    som_matches = cursor_small.matches(param_node)
+
+                    for idx, som_match in enumerate(som_matches):
+                        paramData = VariableData()
+                        paramData.visibility = ""
+
+                        captures_dict_2 = som_match[1]
+                        pprint(f"{index}::{idx}: {captures_dict_2}")
+                        if self.KEY_FUNCTION_PARAM_NAME in captures_dict_2:
+                            pprint(captures_dict_2[self.KEY_FUNCTION_PARAM_NAME])
+                            paramData.name = self._get_node_text(captures_dict_2[self.KEY_FUNCTION_PARAM_NAME][0])
+                            paramData.type = self._get_node_text(captures_dict_2[self.KEY_FUNCTION_PARAM_TYPE][0])
+
+                            if self.KEY_FUNCTION_PARAM_ANNOTATION in captures_dict_2:
+                                for annotation in captures_dict_2[self.KEY_FUNCTION_PARAM_ANNOTATION]:
+                                    paramData.annotations.append(self._get_node_text(annotation))
+
+                            parameter_node = captures_dict_2[self.KEY_FUNCTION_PARAM_NAME][0].parent
+                            siblings = param_node.children
+                            try:
+                                idx_in_siblings = siblings.index(parameter_node)
+                                if (
+                                        idx_in_siblings + 2 < len(siblings)
+                                        and siblings[idx_in_siblings + 1].type == "="
+                                ):
+                                    default_node = siblings[idx_in_siblings + 2]
+                                    paramData.default_value = self._get_node_text(default_node)
+                            except ValueError:
+                                pass  # parameter_node not found in siblings
+
+                            function_data.parameters.append(paramData)
 
             if self.KEY_FUNCTION_RETURN_TYPE in captures_dict:
-                data.return_type = self._get_node_text(captures_dict[self.KEY_FUNCTION_RETURN_TYPE][0])
+                function_data.return_type = self._get_node_text(captures_dict[self.KEY_FUNCTION_RETURN_TYPE][0])
 
-            analysis.functions.append(data)
+            analysis.functions.append(function_data)
 
     def _extract_imports(self, captures_dict, index):
         """
@@ -1069,12 +1240,12 @@ data class CustomForm(val customization: Float) : FormFactor()
     source_code_6 = """
 @Dost
         class SomethingSomething(){
-        fun processData(data: T): Any?{
+        fun processData(data: T , beta:Boolean = false,@nullable gamma:Int?): Any?{
         }
         }
 """
     KotlinASTAnalyzer().analyze_kotlin_file(file_path=file_path_1,
-                                            source_bytes=source_code_5.encode("utf-8"),
+                                            source_bytes=source_code_1.encode("utf-8"),
                                             print_debug_info=True)
 
 

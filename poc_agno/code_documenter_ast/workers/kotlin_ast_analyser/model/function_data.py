@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from typing import List
 
+from .variable_data import VariableData
+
 
 @dataclass
 class FunctionData:
@@ -28,7 +30,7 @@ class FunctionData:
         public fun calculateSum(a: Int, b: Int): Int
     """
     name: str = ""
-    parameters: str = ""
+    parameters: List[VariableData] = field(default_factory=list)
     annotations: List[str] = field(default_factory=list)
     visibility: str = field(default="public")
     return_type: str = field(default="Unit")

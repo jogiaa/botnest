@@ -51,7 +51,6 @@ class KotlinAnalysisData:
     constructor_param_type: List[VariableData] = field(default_factory=list)
     extends: str = ""
     implements: List[str] = field(default_factory=list)
-    functions: List[FunctionData] = field(
-        default_factory=list)  # [{'name','visibility','return_type','param_types'}, ...]
+    functions: List[FunctionData] = field(default_factory=list)  # [{'name','visibility','return_type','param_types'}, ...]
     uses: List[str] = field(default_factory=list)
     used_by: List[str] = field(default_factory=list)
