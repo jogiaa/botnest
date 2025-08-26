@@ -1,0 +1,65 @@
+rules:
+  use_tools_only: &use_tools_only
+    description: "Strictly use the assigned tools (web_agent, math_agent) for all operations. No guessing or bypassing tools."
+    example: "Always call web_agent to fetch recipes and math_agent to perform calculations."
+
+  search_recipes: &search_recipes
+    description: "Search the web for 5 reliable recipes of the requested dish."
+    example: "Search 'spaghetti carbonara recipe' on trusted websites like allrecipes.com, foodnetwork.com, epicurious.com."
+
+  extract_ingredients: &extract_ingredients
+    description: "Extract ingredients from the recipes, normalize names, and prepare a structured list with quantities."
+    example: "Map 'brown sugar' and 'light brown sugar' to a single ingredient name and quantity."
+
+  list_carbs: &list_carbs
+    description: List the estimated carbs count for each ingredient.
+    example: "100g of sugar = 100g carbs, 200g flour = 152g carbs."
+
+  calculate_total_carbs: &calculate_total_carbs
+    description: "Use the ingredients list and cooking method to calculate total carbs per serving using math_agent."
+    example: "Boil pasta 10 min, combine ingredients, sum carbs, divide by servings, present in markdown format."
+
+  determine_cooking_info: &determine_cooking_info
+    description: Determine cooking method, time, and serving size from the recipe. And its effects on the carbs.
+    example: "Boil pasta 10 min, serve 2 portions."
+
+
+  provide_fallback: &provide_fallback
+    description: Provide a general estimate if the recipe is not found or incomplete.
+    example: "Average carbs of common ingredients for 'pancakes'."
+
+
+  call_web_tool: &call_web_tool
+    description: "Use web_agent exclusively for all web searches, fetching recipes, and gathering data."
+    example: "Call web_agent with query 'chicken curry recipe' and retrieve top 5 recipes."
+
+  call_math_tool: &call_math_tool
+    description: "Use math_agent exclusively for any mathematical calculations, estimations, or conversions."
+    example: "Sum carbs from ingredients, adjust for cooking method, divide by serving size, return numeric result."
+
+workflow:
+  - step: 1
+    rule: *use_tools_only
+    output: "Ensure all actions are performed via tools only."
+
+  - step: 2
+    rule: *call_web_tool
+    output: "Web agent is used to search for recipes."
+
+  - step: 3
+    rule: *search_recipes
+    output: "List of websites/URLs where recipes were found."
+
+  - step: 4
+    rule: [*extract_ingredients , *list_carbs , *determine_cooking_info , *provide_fallback]
+    output: "List of ingredients with amounts."
+
+  - step: 5
+    rule: *call_math_tool
+    output: "Math agent is used to calculate carbs."
+
+  - step: 6
+    rule: *calculate_total_carbs
+    output: "Total carbs per serving with calculation steps."
+
+
