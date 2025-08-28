@@ -20,9 +20,6 @@ class DishCarbInfo(BaseModel):
     carbs: float
 
 
-
-
-
 agent_team = Team(
     mode="coordinate",
     members=[web_agent, math_agent],
@@ -34,7 +31,7 @@ agent_team = Team(
     show_tool_calls=True,
     markdown=True,
     reasoning=True,
-    # debug_mode=True,
+    debug_mode=True,
 )
 
 if __name__ == "__main__":
