@@ -12,21 +12,38 @@ rules:
     Example:
       Query: "How many carbs in a medium red delicious apple?"
       Tool call: { "food_name": "red delicious apple" }
-  
 
-  calculate_from_serving: &calculate_from_serving |
-    After receiving tool output:
-    1. If per_serving is provided, use that directly.
-    2. If only per_100g is provided:
-       - If the query specifies a serving size (e.g., "small", "medium", "large"):
-         • Map the serving size to a reasonable estimated weight range for that food item.  
-           Example: Medium apple = 150–200g.  
-         • Take the average of the range (e.g., (150+200)/2 = 175g).  
-         • Calculate carbs as: carb_per_100g × (average_weight / 100).
-       - If the query specifies an explicit weight (e.g., "1kg grapes" or "250g rice"),
-         use the provided weight directly to calculate carbs.  
-         Example: per_100g grapes = 3g → 1kg = 1000g → carbs = 3 × (1000 / 100) = 30g.
-    3. If no serving size or weight is mentioned, return only the per_100g value.
+  unit_conversion: &unit_conversion |
+    When a query includes weight in non-gram units, always convert to grams:
+    - 1 kilogram (kg) = 1000 grams
+    - 1 pound (lb) = 453.59 grams
+    - 1 ounce (oz) = 28.35 grams
+    - Round to 2 decimal places when needed
+    Use these conversions before calculating carbs.
+
+  calculate_from_serving:
+    priority_1_per_serving: &priority_1_per_serving |
+      If the tool provides a per_serving value:
+      - Use that directly.
+      - Do not attempt to re-calculate from per_100g.
+
+    priority_2_explicit_weight: &priority_2_explicit_weight |
+      If the query includes an explicit weight (grams, kilograms, pounds, ounces):
+      - Always prioritize this over serving-size estimation.
+      - Apply *unit_conversion* if needed.
+      - Calculate carbs as: carb_per_100g × (weight_in_grams / 100).
+      Example: per_100g grapes = 3g → 1kg = 1000g → carbs = 3 × (1000 / 100) = 30g.
+
+    priority_3_serving_size: &priority_3_serving_size |
+      If the query specifies a serving size (e.g., "small", "medium", "large"):
+      - Map the serving size to a reasonable estimated weight range for that food item.
+        Example: Medium apple = 150–200g.
+      - Take the average of the range (e.g., (150+200)/2 = 175g).
+      - Calculate carbs as: carb_per_100g × (average_weight / 100).
+
+    fallback_per_100g: &fallback_per_100g |
+      If no serving size or weight is mentioned:
+      - Return only the per_100g value from the tool.
 
 workflow:
   - step: search_carbs
@@ -34,4 +51,8 @@ workflow:
     rules:
       - *use_tools_only
       - *normalize_query
-      - *calculate_from_serving
+      - *unit_conversion
+      - *priority_1_per_serving
+      - *priority_2_explicit_weight
+      - *priority_3_serving_size
+      - *fallback_per_100g

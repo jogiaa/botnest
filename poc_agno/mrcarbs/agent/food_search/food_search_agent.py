@@ -1,3 +1,4 @@
+import asyncio
 from pprint import pprint
 
 from agno.agent import Agent
@@ -14,6 +15,13 @@ food_search_agent = Agent(
     debug_mode=True,
 )
 
+
+async def main():
+    result = await food_search_agent.arun("How many carbs are in a 1lb of green beans?")
+    pprint(result)
+
+
 if __name__ == "__main__":
-    pprint(load_yaml_instructions("instructions.yaml"))
-    pprint(food_search_agent.run("How many carbs are in a 1lb of green beans?"))
+    asyncio.run(main())
+
+

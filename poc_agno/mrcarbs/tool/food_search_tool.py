@@ -11,7 +11,7 @@ from poc_agno.utils.load_instructions import load_yaml_instructions
 
 
 @tool(name="food carb search tool")
-def get_food_carbs(food_name: str, exact: bool = False) -> dict:
+def get_food_carbs(food_name: str) -> dict:
     """
     Look up carbohydrate information for a given food.
 
@@ -29,7 +29,7 @@ def get_food_carbs(food_name: str, exact: bool = False) -> dict:
     load_dotenv()
     print("----------------------------")
     finder = FoodCarbFinder(api_key=os.getenv("USDA_API_KEY"))
-    desc, carbs = finder.get_carbs(food_name, exact)
+    desc, carbs = finder.get_carbs(food_name, False)
     if not desc or not carbs:
         return {"error": f"No food found for '{food_name}'"}
     return {"description": desc, **carbs}
