@@ -47,15 +47,64 @@ rules:
       If no serving size or weight is mentioned:
       - Return only the per_100g value from the tool.
 
+  use_carbs_math_tool_only: &use_carbs_math_tool_only |
+    STRICT RULE: 
+      - When calling `carb_calculator_tool`, you MUST pass only raw numbers.
+      - Always use the EXACT numbers you get from  `get_food_carbs_tool`
+    Purpose:
+    - Whenever you know both:
+        • grams (weight of portion)
+        • carbs per 100g
+      you MUST call `carb_calculator_tool` to compute total carbs.
+    
+    - Do not attempt math yourself. Always use the tool.
+    
+    Usage format:
+    - The tool MUST be called with exactly:
+        { "per_100g": <number>, "grams": <number> }
+    - Do NOT include "food_name".
+    - Do NOT pass tool names, objects, or JSON results.
+    - You MUST extract the numeric `per_100g` value from the `get_food_carbs_tool` result before calling.
+    - Example:
+      If response from get_food_carbs_tool is 
+      {"description": "GREEN BEANS", "per_100g": 3.33, "per_serving": []}
+      then 
+      ✅ { "per_100g": 3.33, "grams": 453.59 }
+      ❌ { "per_100g": 3, "grams": 453.59 }
+      ❌ { "per_100g": 3.3, "grams": 453.59 }
+      ❌ { "per_100g": 7.1, "grams": 453.59 }
+      ❌ { "per_100g": "get_food_carbs", "grams": 453.59 }
+      ❌ { "per_100g": {"result": ...}, "grams": 453.59 }
+      ❌ { "food_name": "green beans", "grams": 453.59, "per_100g": 7.1 }
+    
+
 workflow:
-  - step: normalize_and_search
+  - step: lookup_food_carbs
+    description: |
+      First, look up the carb information for the food item.
+    call: get_food_carbs_tool
     rules:
       - *use_tools_only
       - *normalize_query
-      - *unit_conversion
-  - step: calculate_carbs
+
+  - step: prepare_calculation
+    description: |
+      Next, interpret the user's query and the data from the lookup step to determine the final gram value for calculation. This step involves unit conversion and serving size estimation.
     rules:
+      - *unit_conversion
       - *priority_1_per_serving
       - *priority_2_explicit_weight
       - *priority_3_serving_size
       - *fallback_per_100g
+
+  - step: perform_calculation
+    description: |
+      Finally, use the carb value (from the lookup) and the gram value (from preparation) to perform the calculation.
+    call: carb_calculator_tool
+    rules:
+      - *use_carbs_math_tool_only
+    inputs:
+      - from: lookup_food_carbs.per_100g
+        to: per_100g
+      - from: prepare_calculation.grams
+        to: grams

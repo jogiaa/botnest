@@ -34,6 +34,7 @@ def post_hook(fc: FunctionCall):
 
 
 @tool(
+    name="get_food_carbs_tool",
     show_result=True,
     cache_results=True,
     strict=True,
