@@ -14,7 +14,8 @@ food_search_agent = Agent(
     model=llm_model,
     tools=[get_food_carbs , carb_calculator_tool],
     show_tool_calls=True,
-    debug_mode=True,
+    # debug_mode=True,
+    markdown= True
 )
 
 
@@ -28,4 +29,4 @@ food_search_agent = Agent(
 
 
 if __name__ == "__main__":
-    pprint(food_search_agent.run("How many carbs are in a 1lb of green beans?"))
+    pprint(food_search_agent.run("How many carbs are in a large size banana?"))
