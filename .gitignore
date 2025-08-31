@@ -213,3 +213,5 @@ chroma
 sample-lib-com
 
 .DS_Store
+
+.cache**

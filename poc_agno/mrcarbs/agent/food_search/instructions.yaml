@@ -5,13 +5,15 @@ rules:
     - Never introduce carb values not provided by the tool.
 
   normalize_query: &normalize_query |
-    When calling the tool:
-    - Only pass the 'food_name' parameter.
-    - Do not add extra parameters like 'size', 'serving', 'modifier', or anything else.
-    - Strip size descriptors (small, medium, large) before calling the tool.
-    Example:
-      Query: "How many carbs in a medium red delicious apple?"
-      Tool call: { "food_name": "red delicious apple" }
+    STRICT RULE: When calling the tool you must pass ONLY:
+      { "food_name": "<food item name>" }
+    - Do NOT include any other parameters (such as size, serving, weight, unit, modifier).
+    - Remove descriptors like "1lb", "1 pound", "medium", "small", "large", "cup", "slice" before calling the tool.
+    - These descriptors will be handled later during calculation, not in the tool call.
+    - Example:
+        Query: "How many carbs in a 1lb of green beans?"
+        ✅ Tool call: { "food_name": "green beans" }
+        ❌ Tool call: { "food_name": "green beans", "size": "1 pound" }
 
   unit_conversion: &unit_conversion |
     When a query includes weight in non-gram units, always convert to grams:
@@ -46,12 +48,13 @@ rules:
       - Return only the per_100g value from the tool.
 
 workflow:
-  - step: search_carbs
-    tool: get_food_carbs
+  - step: normalize_and_search
     rules:
       - *use_tools_only
       - *normalize_query
       - *unit_conversion
+  - step: calculate_carbs
+    rules:
       - *priority_1_per_serving
       - *priority_2_explicit_weight
       - *priority_3_serving_size

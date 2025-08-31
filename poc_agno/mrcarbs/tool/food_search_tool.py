@@ -1,16 +1,49 @@
 import os
-from pprint import pprint
+from pathlib import Path
+from typing import Callable, Dict, Any
 
-from agno.agent import Agent
-from agno.tools import tool
+from agno.tools import tool, FunctionCall
 from dotenv import load_dotenv
 
-from poc_agno.llm_model_config import llm_model
 from poc_agno.mrcarbs.worker.usda_fsdc_client import FoodCarbFinder
-from poc_agno.utils.load_instructions import load_yaml_instructions
+
+cache_path = Path(__file__).parent / ".cache_food_carb_search"
+
+def sanitize_params_for_tool(fc: FunctionCall):
+    """
+    Commander Safeguard:Sanitizing the params for the tool before the call is made to the tool.
+    Even though there are strict instructions not to add extra params,
+    sometimes LLM gets high and introduce unwanted stuff ...
+    """
+    print(f"Pre-hook: {fc.function.name}")
+    print(f"Arguments: {fc.arguments} {type(fc.arguments)}")
+    #
+    fc.arguments = {'food_name': fc.arguments['food_name'].lower().strip()}
+    print(f"Modified Arguments: {fc.arguments}")
 
 
-@tool(name="food carb search tool")
+def post_hook(fc: FunctionCall):
+    """
+    Not necessary for the overall working of the tool just for learning
+    """
+    print(f"Post-hook: {fc.function.name}")
+    print(f"Arguments: {fc.arguments}")
+    print(f"Result: {fc.result} {type(fc.result)}")
+    # fc.result.update({'description': fc.result['description'].lower()})
+    print(f"After modification Result: {fc.result}")
+
+
+@tool(
+    show_result=True,
+    cache_results=True,
+    strict=True,
+    cache_dir=cache_path.absolute().name,
+    pre_hook=sanitize_params_for_tool,
+    post_hook=post_hook,
+    # this empty tool list is there to make sure that cache works.
+    # If its None the code has a bug which doesn't use cache
+    tool_hooks=[]
+)
 def get_food_carbs(food_name: str) -> dict:
     """
     Look up carbohydrate information for a given food.
@@ -33,14 +66,15 @@ def get_food_carbs(food_name: str) -> dict:
     if not desc or not carbs:
         return {"error": f"No food found for '{food_name}'"}
     return {"description": desc, **carbs}
-
-
+#
 # if __name__ == "__main__":
+#     PROJECT_ROOT = Path(__file__).resolve().parent.parent
+#     print(PROJECT_ROOT)
 #     agent = Agent(
 #         model=llm_model,
 #         tools=[get_food_carbs],
 #         show_tool_calls=True,
-#         instructions=load_yaml_instructions("../agent/food_search/instructions.yaml")
+#         instructions=load_yaml_instructions(f"{PROJECT_ROOT}/agent/food_search/instructions.yaml")
 #     )
 #
 #     pprint(agent.run("How many carbs are in a medium red delicious apple?"))

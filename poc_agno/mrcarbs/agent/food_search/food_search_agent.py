@@ -15,13 +15,15 @@ food_search_agent = Agent(
     debug_mode=True,
 )
 
-
-async def main():
-    result = await food_search_agent.arun("How many carbs are in a 1lb of green beans?")
-    pprint(result)
+#
+# async def main():
+#     result = await food_search_agent.arun("How many carbs are in a 1lb of green beans?")
+#     pprint(result)
+#
+#
+# if __name__ == "__main__":
+#     asyncio.run(main())
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
-
-
+    pprint(food_search_agent.run("How many carbs are in a 1lb of green beans?"))
