@@ -23,7 +23,7 @@ Extract the provided code in a folder.The directory structure should be
     └── __init__.py
 ```
         
-Run the following command within the folder to setup the python ‘virtual environment’.
+Run the following command within the folder to set up the python ‘virtual environment’.
 ```bash
 python3 -m venv .venv
 ```

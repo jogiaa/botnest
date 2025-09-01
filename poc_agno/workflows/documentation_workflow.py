@@ -1,4 +1,4 @@
-from logging import Logger
+from logging import Logger as logger
 from pathlib import Path
 from pprint import pprint
 from typing import Optional

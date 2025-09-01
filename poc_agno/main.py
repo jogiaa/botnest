@@ -1,4 +1,4 @@
-from poc_agno.teams.calories_agent_team import agent_team
+from poc_agno.mrcarbs.calories_agent_team import agent_team
 
 
 def main():

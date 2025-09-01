@@ -13,6 +13,7 @@ class FileResult: pass
 @dataclass
 class FileDetails(FileResult):
     path: str
+    rel_path: str
     content: str
 
 
@@ -39,6 +40,7 @@ class AnotherFileProcessor:
         self.ignored_directories = ignored_directories if ignored_directories is not None else ["venv", "test", ".git"]
         self.overwrite = overwrite
         self.logger = logger if logger is not None else get_builtin_logger()
+        self.base_path = Path(self.source)
 
     def _is_ignored(self, path: Path) -> bool:
         rel_path = str(path.relative_to(self.source)) if self.source.is_dir() else str(path.name)
@@ -62,14 +64,15 @@ class AnotherFileProcessor:
                         self.logger.debug(f"🚶🏽 Going to read: {file}")
                         yield self._read_file(file)
         else:
-            self.logger.error(f"❌ Saving error: {FileNotFoundError(f"Source <<not>> found")}")
+            self.logger.error(f"❌ Saving error: {FileNotFoundError(f'Source <<not>> found')}")
             yield FileError(path=str(self.source.absolute()), error=FileNotFoundError(f"Source <<not>> found"))
 
     def _read_file(self, file: Path) -> FileResult:
         self.logger.info(f"📖 Reading: {file}")
         try:
             content = file.read_text(encoding='utf-8')
-            return FileDetails(path=str(file), content=content)
+            relative_path = file.relative_to(self.base_path)
+            return FileDetails(path=str(file), content=content, rel_path=str(relative_path))
         except Exception as e:
             self.logger.error(f"❌ Reading error: {e}")
             return FileError(path=str(file), error=e)
