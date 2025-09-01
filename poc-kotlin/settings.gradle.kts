@@ -12,3 +12,4 @@ plugins {
 
 rootProject.name = "poc-kotlin"
 include("koog-agent")
+include("code-analysis")

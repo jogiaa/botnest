@@ -5,11 +5,14 @@ junit-jupiter-engine = "5.12.1"
 kotlinx-serialization = "1.8.1"
 kotlin = "2.1.20"
 koog = "0.2.1"
+kotlinx-ast="0.1.0"
 
 [libraries]
 junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit-jupiter-engine" }
 koog-agents = { module = "ai.koog:koog-agents", version.ref = "koog" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+ast-antlr-kotlin = { module = "com.github.kotlinx.ast:grammar-kotlin-parser-antlr-kotlin-jvm", version.ref = "kotlinx-ast" }
+ast-common-jvm = { module = "com.github.kotlinx.ast:grammar-kotlin-parser-common-jvm" , version.ref = "kotlinx-ast" }
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

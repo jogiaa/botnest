@@ -55,16 +55,16 @@ buildConfig {
     val properties = Properties()
     rootProject.file("local.properties").reader().use { reader ->
         properties.load(reader)
-        if (properties["file_tool_base_path"] == null) {
+        if (properties["koog_agent_base_path"] == null) {
             throw IllegalArgumentException(
                 """
-                    Ensure that you set the `file_tool_base_path` in `local.properties`
+                    Ensure that you set the `koog_agent_base_path` in `local.properties`
                     Example:
-                    file_tool_base_path=/path/to/poc-koog/app/src/main/kotlin/com/poc/koog
+                    koog_agent_reference_path=/path/to/poc-kotlin/koog-agent/src/main/kotlin/com/poc/koog
                 """.trimIndent()
             )
         }
-        buildConfigField("FILE_TOOL_BASE_PATH", File(properties["file_tool_base_path"] as String))
+        buildConfigField("KOOG_AGENT_BASE_PATH", File(properties["koog_agent_base_path"] as String))
     }
 }
 

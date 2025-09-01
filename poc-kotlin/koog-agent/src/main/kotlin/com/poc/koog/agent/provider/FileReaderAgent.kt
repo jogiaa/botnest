@@ -14,7 +14,7 @@ import com.poc.koog.tools.ReadFileTool
 import poc_kotlin.koog_agent.BuildConfig
 import kotlin.uuid.ExperimentalUuidApi
 
-private val projectFile = BuildConfig.FILE_TOOL_BASE_PATH
+private val projectFile = BuildConfig.KOOG_AGENT_BASE_PATH
 private val projectPath = projectFile.toPath()
 
 private val toolRegistry = ToolRegistry {
