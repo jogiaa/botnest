@@ -1,108 +1,68 @@
 rules:
   use_tools_only: &use_tools_only |
-    You MUST only use the registered tools for nutrition queries.
-    - Never use your own knowledge about food.
-    - Never introduce carb values not provided by the tool.
+    STRICT RULE:
+    - Only use registered tools.
+    - For food search: ONLY call get_food_carbs_tool.
+    - For carb calculations: ONLY call carb_calculator_tool.
+    - Never use your own knowledge.
+    - Never hallucinate carb values or weights.
+    - Never do math yourself.
 
   normalize_query: &normalize_query |
-    STRICT RULE: When calling the tool you must pass ONLY:
+    When calling get_food_carbs_tool, pass ONLY:
       { "food_name": "<food item name>" }
-    - Do NOT include any other parameters (such as size, serving, weight, unit, modifier).
-    - Remove descriptors like "1lb", "1 pound", "medium", "small", "large", "cup", "slice" before calling the tool.
-    - These descriptors will be handled later during calculation, not in the tool call.
+    - Remove serving sizes, weights, units, descriptors (handled later).
     - Example:
-        Query: "How many carbs in a 1lb of green beans?"
-        ✅ Tool call: { "food_name": "green beans" }
-        ❌ Tool call: { "food_name": "green beans", "size": "1 pound" }
+        Query: "Carbs in 1lb green beans?"
+        ✅ { "food_name": "green beans" }
+        ❌ { "food_name": "green beans", "size": "1 lb" }
 
   unit_conversion: &unit_conversion |
-    When a query includes weight in non-gram units, always convert to grams:
-    - 1 kilogram (kg) = 1000 grams
-    - 1 pound (lb) = 453.59 grams
-    - 1 ounce (oz) = 28.35 grams
-    - Round to 2 decimal places when needed
-    Use these conversions before calculating carbs.
+    Always convert weights to grams before calculations:
+    - 1 kg = 1000 g
+    - 1 lb = 453.59 g
+    - 1 oz = 28.35 g
+    Round to 2 decimals.
 
-  calculate_from_serving:
-    priority_1_per_serving: &priority_1_per_serving |
-      If the tool provides a per_serving value:
-      - Use that directly.
-      - Do not attempt to re-calculate from per_100g.
-
-    priority_2_explicit_weight: &priority_2_explicit_weight |
-      If the query includes an explicit weight (grams, kilograms, pounds, ounces):
-      - Always prioritize this over serving-size estimation.
-      - Apply *unit_conversion* if needed.
-      
-
-    priority_3_serving_size: &priority_3_serving_size |
-      If the query specifies a serving size (e.g., "small", "medium", "large"):
-      - Map the serving size to a reasonable estimated weight range for that food item.
-        Example: Medium apple = 150–200g.
-      - Take the average of the range (e.g., (150+200)/2 = 175g).
-
-    fallback_per_100g: &fallback_per_100g |
-      If no serving size or weight is mentioned:
-      - Return only the per_100g value from the tool.
+  serving_size_estimation: &serving_size_estimation |
+    When query mentions serving size (e.g., "small", "medium", "large"):
+    - Use a food-specific weight range (e.g., medium apple = 150–200g).
+    - Always calculate the average of the range: (min+max)/2.
+    - Use this average in grams as the weight.
+    - Never invent serving sizes that are not commonly associated with that food.
 
   use_carbs_math_tool_only: &use_carbs_math_tool_only |
-    STRICT RULE: 
-      - When calling `carb_calculator_tool`, you MUST pass only raw numbers.
-      - Always use the EXACT numbers you get from  `get_food_carbs_tool`
-    Purpose:
-    - Whenever you know both:
-        • grams (weight of portion)
-        • carbs per 100g
-      you MUST call `carb_calculator_tool` to compute total carbs.
-    
-    - Do not attempt math yourself. Always use the tool.
-    
-    Usage format:
-    - The tool MUST be called with exactly:
+    STRICT RULE:
+    - Never calculate yourself.
+    - Call carb_calculator_tool ONLY with:
         { "per_100g": <number>, "grams": <number> }
-    - Do NOT include "food_name".
-    - Do NOT pass tool names, objects, or JSON results.
-    - You MUST extract the numeric `per_100g` value from the `get_food_carbs_tool` result before calling.
-    - Example:
-      If response from get_food_carbs_tool is 
-      {"description": "GREEN BEANS", "per_100g": 3.33, "per_serving": []}
-      then 
-      ✅ { "per_100g": 3.33, "grams": 453.59 }
-      ❌ { "per_100g": 3, "grams": 453.59 }
-      ❌ { "per_100g": 3.3, "grams": 453.59 }
-      ❌ { "per_100g": 7.1, "grams": 453.59 }
-      ❌ { "per_100g": "get_food_carbs", "grams": 453.59 }
-      ❌ { "per_100g": {"result": ...}, "grams": 453.59 }
-      ❌ { "food_name": "green beans", "grams": 453.59, "per_100g": 7.1 }
-    
+    - Extract the numeric per_100g value directly from get_food_carbs_tool.
+    - Do not include food_name, objects, or nested JSON.
 
 workflow:
   - step: lookup_food_carbs
-    description: |
-      First, look up the carb information for the food item.
+    description: Always call get_food_carbs_tool FIRST to retrieve per_100g carbs.
     call: get_food_carbs_tool
     rules:
-      - *use_tools_only
       - *normalize_query
+      - *use_tools_only
 
-  - step: prepare_calculation
-    description: |
-      Next, interpret the user's query and the data from the lookup step to determine the final gram value for calculation. This step involves unit conversion and serving size estimation.
+  - step: determine_weight
+    description: Determine weight in grams.
     rules:
       - *unit_conversion
-      - *priority_1_per_serving
-      - *priority_2_explicit_weight
-      - *priority_3_serving_size
-      - *fallback_per_100g
+      - *serving_size_estimation
+      - If explicit weight provided → use it directly (after conversion).
+      - If serving size provided → apply serving_size_estimation.
+      - If neither provided → only use per_100g, no calculation.
 
   - step: perform_calculation
-    description: |
-      Finally, use the carb value (from the lookup) and the gram value (from preparation) to perform the calculation.
+    description: Only after lookup_food_carbs and determine_weight are done, call carb_calculator_tool.
     call: carb_calculator_tool
     rules:
       - *use_carbs_math_tool_only
     inputs:
       - from: lookup_food_carbs.per_100g
         to: per_100g
-      - from: prepare_calculation.grams
+      - from: determine_weight.grams
         to: grams

@@ -15,7 +15,6 @@ def carb_calculator_tool(per_100g: float, grams: float) -> float:
     Deterministically calculate carbs from per_100g value and weight in grams.
     """
     logger = get_builtin_logger()
-    logger.debug(f"Calculating carbs from {per_100g} grams... for {grams} grams")
     result =  round(per_100g * (grams / 100), 2)
-    logger.debug(f"Calculated carbs: {result}")
+    logger.debug(f"{grams}[Portion] --- {per_100g}[per 100g]  = {result} [result]")
     return result
