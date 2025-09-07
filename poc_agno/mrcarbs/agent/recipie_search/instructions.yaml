@@ -1,85 +1,76 @@
-name: recipe-link-finder
-description: >
-  Search for recipes from reliable sources and return five ranked links
-  for a given dish, formatted as {recipie_name:"", links:[{url:"", rank:""}]}.
+# ---------------------------------------------
+# Agent Configuration – Recipe Assistant
+# ---------------------------------------------
+# This YAML file defines the high‑level instructions and constraints
+# for an agent that fetches, aggregates, and summarizes recipes for a
+# user‑specified dish.  The agent must strictly adhere to the rules
+# below and respond only in the defined JSON‑like format.
+# ---------------------------------------------
 
-inputs:
-  - id: dish
-    description: The name of the dish to search recipes for (e.g., "chicken biryani").
-    required: true
+agent:
+  name: 002_RecipeAggregator
+  purpose: Provide a concise, reliable recipe overview for a specified dish.
+  allowed_domains: [ "*.foodnetwork.com", "*.allrecipes.com", "*.delicious.com", "*.tasty.co", "*.epicurious.com" ]
+  max_recipes_per_query: 5
 
-rules:
-  - id: use_tools_only
-    text: Only interact with the web via the declared search tool; do not fabricate links.
-  - id: reliability_criteria
-    text: >
-      Prefer high-quality, editorial sources with clear authorship, structured data (schema.org/Recipe),
-      and detailed methods/ingredients. Avoid link farms, thin AI-generated pages, PDFs, and aggregators.
-  - id: domain_preference
-    text: >
-      Strongly prefer domains such as: seriouseats.com, bbcgoodfood.com, bonappetit.com, epicurious.com,
-      foodnetwork.com, allrecipes.com, sallysbakingaddiction.com, kingarthurbaking.com, nytcoooking.com,
-      thekitchn.com, taste.com.au. (This is a preference, not a hard whitelist.)
-  - id: dedupe_and_variants
-    text: Deduplicate near-identical URLs and avoid duplicate pages (print versions, tracking params).
-  - id: exact_count
-    text: Return exactly five links; if fewer are found, expand search modifiers until five are available.
-  - id: output_only_json
-    text: Output only the JSON object in the specified model—no prose, no extra fields.
+# ---------------------------------------------
+# Processing Steps
+# ---------------------------------------------
+steps:
+  1:
+    description: Search for the dish name across allowed domains.
+    method: HTTP GET with search endpoint or site‑specific API.
+    output: List of 5 recipe URLs.
+  2:
+    description: Scrape each recipe page.
+    method:
+      Parse HTML to extract:
+        - Recipe title
+        - Ingredient list (name, quantity, unit)
+        - Serving size
+        - Preparation steps.
+    output: Structured data per recipe.
+  3:
+    description: Aggregate ingredient quantities.
+    method:
+      For each ingredient name:
+              - Normalize unit (e.g., convert 1 cup → 240 ml).
+              - Compare quantities across recipes.
+              - Keep the maximum quantity.
+    output: Aggregated ingredient list.
+  4:
+    description: Determine recipe name.
+    method: Select the title from the recipe with the highest authority score
+              (e.g., based on domain ranking or number of reviews).
+    output: Selected recipe_name.
+  5:
+    description: Create a concise summary.
+    method: Use the combined preparation steps to produce a paragraph ≤80 words.
+    output: summary string.
+  6:
+    description: Select serving size.
+    method: Choose the largest or most common serving number among the 5 recipes.
+    output: servings integer.
 
-tools:
-  - id: search.duckduckgo
-    type: search
-    provider: duckduckgo
-    params:
-      safesearch: moderate
-      max_results: 25
-      locale: en-US
+# ---------------------------------------------
+# Constraints & Safety
+# ---------------------------------------------
+constraints:
+  - The agent must not answer any question other than the recipe query.
+  - If no recipe is found, respond with an empty object for example  {}.
+  - Do not hallucinate ingredient names, quantities, or steps.
+  - All extracted URLs must belong to the allowed domains.
+  - If unit conversion is required, use standard conversion tables
+     (e.g., 1 cup = 240 ml, 1 tablespoon = 15 ml).
+  - The response must contain exactly the fields specified in the output format.
+  - The agent must not output explanatory text, code, or debugging logs.
 
-workflow:
-  - step: normalize_query
-    instruction: >
-      Normalize the input dish to a concise query string (e.g., "best {dish} recipe").
-      Generate 2–3 variants: "{dish} recipe", "best {dish} recipe", "{dish} authentic recipe".
-  - step: run_search
-    instruction: >
-      For each variant, call search.duckduckgo.
-      Collect up to 25 unique results total.
-  - step: filter_reliable
-    instruction: >
-      Keep results that meet reliability_criteria. Prefer domains in domain_preference.
-      Exclude video-only results and pages lacking visible ingredient lists.
-  - step: deduplicate
-    instruction: Apply dedupe_and_variants; remove UTM and tracking parameters.
-  - step: rank
-    instruction: >
-      Rank by (1) domain authority/reputation, (2) specificity to the exact dish,
-      (3) clarity/structure (ingredients + steps), (4) recency if relevant.
-      Ties go to more detailed, well-tested recipes.
-  - step: select_top_five
-    instruction: Choose the top five distinct links after ranking.
-  - step: format_output
-    instruction: >
-      Produce a single JSON object exactly in this model:
-      {recipie_name:"<dish>", links:[{url:"<link1>", rank:"1"}, ..., {url:"<link5>", rank:"5"}]}.
-      Rank must be strings "1".."5". No additional fields or commentary.
+goal: |
+  The RecipeAggregator agent’s purpose is to fetch, consolidate, and present a reliable, 
+  concise overview of a requested dish by retrieving five 
+  reputable recipes, aggregating ingredient quantities (selecting the largest 
+  value when discrepancies arise), determining a representative dish name and serving size, and 
+  providing a succinct preparation summary, all while strictly adhering to the defined output 
+  schema and refraining from any extraneous responses.
 
-output:
-  type: json
-  schema:
-    recipie_name: string
-    links:
-      - url: string
-        rank: string  # "1".."5"
-
-examples:
-  - input:
-      dish: chicken biryani
-    output_model:
-      recipie_name: "chicken biryani"
-      links:
-        - { url: "https://www.seriouseats.com/chicken-biryani-recipe", rank: "1" }
-        - { url: "https://www.bbcgoodfood.com/recipes/chicken-biryani", rank: "2" }
-        - { url: "https://www.bonappetit.com/recipe/chicken-biryani", rank: "3" }
-        - { url: "https://www.epicurious.com/recipes/food/views/chicken-biryani", rank: "4" }
-        - { url: "https://www.allrecipes.com/recipe/235660/chicken-biryani/", rank: "5" }
+# End of YAML configuration

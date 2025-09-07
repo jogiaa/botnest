@@ -1,51 +1,63 @@
 from typing import List
 
 from agno.agent import Agent
+from agno.tools import FunctionCall
 from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.scrapegraph import ScrapeGraphTools
-from agno.tools.spider import SpiderTools
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, confloat, PositiveInt
 
-from poc_agno.llm_model_config import llm_model
+from poc_agno.llm_model_config import llm_model, code_model
 from poc_agno.utils.load_instructions import load_yaml_instructions
 
 
-class RecipieLinks(BaseModel):
-    url: str = Field(..., description="Link to the recipe")
-    rank: int = Field(..., description="Rank of the link")
+class Ingredient(BaseModel):
+    """Represents a single ingredient in a recipe."""
+
+    name: str = Field(..., description="Ingredient name")
+    quantity: confloat(ge=0) = Field(
+        ...,
+        description="Maximum quantity found across the fetched recipes",
+    )
+    unit: str = Field(..., description="Unit of measurement (e.g., grams, milliliters, cups)")
 
 
-class DishRecipies(BaseModel):
-    dish_name: str = Field(..., description="Name of the dish")
-    dish_recipies: List[RecipieLinks] = Field(..., description="List of recipe links for the dish")
+class RecipeResponse(BaseModel):
+    """The JSON‑like response returned by the RecipeAggregator agent."""
+
+    recipe_name: str = Field(..., description="Representative name of the dish.")
+    links: List[str] = Field(
+        ...,
+        description="Exactly five URLs to reputable recipe sources",
+    )
+    ingredients: List[Ingredient] = Field(
+        ...,
+        description="Aggregated list of ingredients with maximum quantities",
+    )
+    summary: str = Field(
+        ...,
+        description="Condensed preparation summary (≤80 words)",
+    )
+    servings: PositiveInt = Field(
+        ...,
+        description="Number of people the recipe can feed",
+    )
 
 
 food_search_agent = Agent(
-    agent_id="002_recipie_search",
-    description="You are recipie search agent that helps user find recipes",
-    role="Recipie search agent",
-    respond_directly=True,
+    agent_id="002_RecipeAggregator",
+    description="You are recipie search agent that helps user find recipes and extract the ingredients and cooking summary",
+    role="Recipe search agent",
     add_transfer_instructions=True,
-    instructions=load_yaml_instructions("instructions.yaml"),
+    instructions=load_yaml_instructions("instructions4.yaml"),
     model=llm_model,
-    tools=[
-        DuckDuckGoTools(search=True, news=False),
-    ],
-    response_model=DishRecipies,
+    response_model=RecipeResponse,
     show_tool_calls=True,
     debug_mode=True,
-    markdown=True
+    markdown=False,
+    # expected_output= ,
+    use_json_mode=True,
+    parser_model=code_model,
+    goal="The RecipeAggregator agent’s purpose is to fetch, consolidate, and present a reliable, concise overview of a requested dish by retrieving five reputable recipes, aggregating ingredient quantities (selecting the largest value when discrepancies arise), determining a representative dish name and serving size, and providing a succinct preparation summary, all while strictly adhering to the defined output schema and refraining from any extraneous responses."
 )
 
-# async def main():
-#     result = await food_search_agent.arun("How many carbs are in a 1lb of green beans?")
-#     pprint(result)
-#
-#
-# if __name__ == "__main__":
-#     asyncio.run(main())
-
-
 if __name__ == "__main__":
-    # pprint(food_search_agent.run("How many carbs are in a large size banana?"))
-    food_search_agent.print_response("How to make mutton haleem?")
+    food_search_agent.print_response("recipie Chicken Briyani?")
