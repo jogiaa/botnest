@@ -60,4 +60,4 @@ food_search_agent = Agent(
 )
 
 if __name__ == "__main__":
-    food_search_agent.print_response("recipie Chicken Briyani?")
+    food_search_agent.print_response("recipie clam chowder?")
