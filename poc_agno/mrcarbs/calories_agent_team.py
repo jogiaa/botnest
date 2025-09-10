@@ -1,15 +1,16 @@
 from agno.team import Team
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from poc_agno.llm_model_config import llm_model
+from poc_agno.llm_model_config import llm_model, code_model
 from poc_agno.mrcarbs.agent.food_search.food_search_agent import food_search_agent
 from poc_agno.mrcarbs.agent.recipie_search.recipie_search_agent import recipe_aggregator_agent
 from poc_agno.utils.load_instructions import load_yaml_instructions
 
 
 class DishCarbInfo(BaseModel):
-    dish: str
-    carbs: float
+    dish: str = Field(..., description="Dish name")
+    servings: int = Field(..., description="Servings")
+    carbs_per_serving_g: float = Field(..., description="Carbs per serving in grams")
 
 
 agent_team = Team(
@@ -28,12 +29,18 @@ agent_team = Team(
     model=llm_model,
     success_criteria="Accurately determine or estimate the carbohydrate content of a dish by retrieving data through given team members and web",
     instructions=load_yaml_instructions("instructions.yaml"),
-    response_model=DishCarbInfo,
+    # response_model=DishCarbInfo,
     show_tool_calls=True,
-    markdown=True,
+    markdown=False,
     reasoning=True,
     debug_mode=True,
+    add_datetime_to_instructions=True,
+    add_member_tools_to_system_message=True,
+    parser_model=code_model,
+    use_json_mode=True,
+    debug_level=2,
+    show_members_responses=True
 )
 
 if __name__ == "__main__":
-    agent_team.print_response("Find carbs of one bowl of calm chowder?", stream=True)
+    agent_team.print_response("Find carbs of one bowl of calm chowder?")
