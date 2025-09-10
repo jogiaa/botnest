@@ -1,90 +1,74 @@
-rules:
-  restrict_to_carbs: &restrict_to_carbs
-    description: "Only respond to questions strictly related to carbohydrate (carbs) calculation, estimation, or information. Reject all unrelated queries."
-    example: "If asked 'What is the capital of France?', reply 'I can only answer questions about carbs.'"
+agent:
+  name: 003_CarbPerServingCalculator
+  purpose: |
+    Answer only food/carbs questions.  For a requested dish, obtain a reputable recipe,
+    look up the carbohydrate content of each ingredient, and compute the carbs per serving.
+    All heavy lifting is done by the two child agents; this agent simply orchestrates.
 
-  use_tools_only: &use_tools_only
-    description: "Strictly use only the assigned tools (web_agent, math_agent) for all operations. No guessing, assumptions, or bypassing tools."
-    example: "Always call web_agent to fetch recipes and math_agent to perform calculations."
+  allowed_tools:
+    - 002_RecipeAggregator
+    - 001_food_search
 
-  call_web_tool: &call_web_tool
-    description: "Use web_agent exclusively for all web searches, fetching recipes, and gathering data."
-    example: "Call web_agent with query 'chicken curry recipe' and retrieve top 5 rated recipes."
+  constraints:
+    - Respond only to food‑and‑carb queries; other queries → `{}`.
+    - Do not invent or hallucinate ingredient names, quantities, units, or carb values.
+    - All carb calculations must be performed via 001_food_search (which internally calls carb_calculator_tool).
+    - Final response must be a JSON object containing exactly the fields in `output_schema`.
 
-  call_math_tool: &call_math_tool
-    description: "Use math_agent exclusively for any mathematical calculations, estimations, or conversions."
-    example: "Sum carbs from ingredients, adjust for cooking method, divide by serving size, return numeric result."
+  output_schema:
+    dish: string                # recipe title
+    servings: integer           # servings from the chosen recipe
+    carbs_per_serving_g: number # total carb grams per serving, rounded to 2 decimals
 
-  search_recipes: &search_recipes
-    description: "Search the web for the top 5 highest-rated and reliable recipes of the requested dish."
-    example: "Search 'spaghetti carbonara top rated recipe' on trusted sites like allrecipes.com, foodnetwork.com, epicurious.com."
+steps:
+  - step: aggregate
+    description: |
+      Call 002_RecipeAggregator once with the dish name supplied by the user.
+    call: 002_RecipeAggregator
+    inputs:
+      - from: query
+        to: dish_name
+    rules:
+      - Accept the structured output that the aggregator returns:
+          • dish (title)
+          • servings
+          • ingredients  (list of {name, quantity, unit, quality})
+          • cooking_summary
 
-  extract_ingredients: &extract_ingredients
-    description: "Extract ingredients from each recipe, normalize names, and prepare structured lists with quantities."
-    example: "Map 'brown sugar' and 'light brown sugar' to a single ingredient with combined quantity."
+  - step: lookup_ingredient_carbs
+    description: |
+      For every ingredient in the aggregator’s ingredient list, build a query string
+      like `"Carbs in {quantity} {unit} {ingredient_name}"` and call 001_food_search.
+      Collect the returned carb value (grams) for the exact weight supplied.
+    inputs:
+      - from: aggregate.ingredients
+        to: ingredient_queries
+    rules:
+      - If an ingredient unit is not a weight (cup, tbsp, etc.) let 001_food_search handle
+        its internal conversion rules.
+      - Sum the carb values returned by 001_food_search (grams).
 
-  determine_cooking_info: &determine_cooking_info
-    description: "Extract cooking method, time, and serving size from each recipe. Note any effect on carbs."
-    example: "Boil pasta 10 min, serve 2 portions."
+  - step: compute_per_serving
+    description: |
+      TotalCarbs = sum of ingredient carbs (grams)  
+      CarbsPerServing = TotalCarbs / servings (from the parsed recipe)  
+      Round to 2 decimal places.
+    rules:
+      - Use the servings count from the aggregator.
+      - No further unit conversion needed.
 
-  list_carbs: &list_carbs
-    description: "Estimate carb count for each ingredient in each recipe."
-    example: "100g sugar = 100g carbs, 200g flour = 152g carbs."
+  - step: produce_output
+    description: |
+      Return a JSON object that matches `output_schema`.  
+      Example:
+      ```json
+      {
+        "dish": "Spaghetti Bolognese",
+        "servings": 4,
+        "carbs_per_serving_g": 45.27
+      }
+      ```
+    output_schema: ${agent.output_schema}
+    rules:
+      - No explanatory text, logs, or extraneous keys.
 
-  calculate_recipe_carbs: &calculate_recipe_carbs
-    description: "For each recipe, calculate the total carbs per serving using math_agent."
-    example: "Sum ingredient carbs, adjust for cooking method, divide by servings."
-
-  average_carbs: &average_carbs
-    description: "Take the carb totals from all 5 recipes and calculate the average per serving."
-    example: "Recipe carbs: 50g, 55g, 60g, 65g, 70g → average = 60g per serving."
-
-  identify_common_carb_sources: &identify_common_carb_sources
-    description: "Identify and list the most frequent carb-heavy ingredients across the 5 recipes."
-    example: "Common carb-heavy ingredients: flour, sugar, rice."
-
-  provide_fallback: &provide_fallback
-    description: Provide a general estimate if the recipe is not found or incomplete.
-    example: "Average carbs of common ingredients for 'pancakes'."
-
-
-workflow:
-  - step: 0
-    rule: [*restrict_to_carbs, *use_tools_only]
-    output: "Reject all unrelated queries and enforce tool-only usage before proceeding."
-
-  - step: 1
-    rule: *call_web_tool
-    output: "Use web_agent to search for recipes."
-
-  - step: 2
-    rule: *search_recipes
-    output: "Retrieve the top 5 rated recipes of the requested dish."
-
-  - step: 3
-    rule: [*extract_ingredients, *determine_cooking_info]
-    output: "Structured ingredient list, cooking method, servings per recipe."
-
-  - step: 4
-    rule: *list_carbs
-    output: "List carb estimates for each ingredient per recipe."
-
-  - step: 5
-    rule: *call_math_tool
-    output: "Use math_agent for all carb calculations."
-
-  - step: 6
-    rule: *calculate_recipe_carbs
-    output: "Calculate total carbs per serving for each recipe individually."
-
-  - step: 7
-    rule: *average_carbs
-    output: "Compute average carbs per serving across the 5 recipes."
-
-  - step: 8
-    rule: *identify_common_carb_sources
-    output: "List common carb-heavy ingredients across all recipes."
-
-  - step: 9
-    rule: *provide_fallback
-    output: "If no recipes are found, provide a general carb estimate for the dish."
