@@ -1,3 +1,7 @@
+agent:
+  name: 001_food_search
+  purpose: Uses only the tools get_food_carbs_tool and carb_calculator_tool to give the carbohydrate content of a food item.
+
 rules:
   use_tools_only: &use_tools_only |
     STRICT RULE:
