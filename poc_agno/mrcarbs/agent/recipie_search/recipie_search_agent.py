@@ -1,8 +1,6 @@
 from typing import List
 
 from agno.agent import Agent
-from agno.tools import FunctionCall
-from agno.tools.duckduckgo import DuckDuckGoTools
 from pydantic import BaseModel, Field, confloat, PositiveInt
 
 from poc_agno.llm_model_config import llm_model, code_model
@@ -42,10 +40,14 @@ class RecipeResponse(BaseModel):
     )
 
 
-food_search_agent = Agent(
+recipe_aggregator_agent = Agent(
     agent_id="002_RecipeAggregator",
-    description="You are recipie search agent that helps user find recipes and extract the ingredients and cooking summary",
-    role="Recipe search agent",
+    name="recipe_aggregator_agent",
+    role="Recipe search and ingredients extract agent",
+    description="""
+    You are recipie search agent that helps user find recipes and extract the 
+    ingredients and cooking summary
+    """,
     add_transfer_instructions=True,
     instructions=load_yaml_instructions("instructions.yaml"),
     model=llm_model,
@@ -56,8 +58,14 @@ food_search_agent = Agent(
     # expected_output= ,
     use_json_mode=True,
     parser_model=code_model,
-    goal="The RecipeAggregator agent’s purpose is to fetch, consolidate, and present a reliable, concise overview of a requested dish by retrieving five reputable recipes, aggregating ingredient quantities (selecting the largest value when discrepancies arise), determining a representative dish name and serving size, and providing a succinct preparation summary, all while strictly adhering to the defined output schema and refraining from any extraneous responses."
+    goal="""
+    The RecipeAggregator agent’s purpose is to fetch, consolidate, and present a reliable, 
+    concise overview of a requested dish by retrieving five reputable recipes, aggregating 
+    ingredient quantities (selecting the largest value when discrepancies arise), determining a 
+    representative dish name and serving size, and providing a succinct preparation summary, 
+    all while strictly adhering to the defined output schema and refraining from any extraneous responses.
+    """
 )
 
 if __name__ == "__main__":
-    food_search_agent.print_response("recipie clam chowder?")
+    recipe_aggregator_agent.print_response("recipie clam chowder?")
