@@ -1,9 +1,18 @@
 from agno.agent import Agent
+from pydantic import BaseModel, Field
 
-from poc_agno.llm_model_config import llm_model
+from poc_agno.llm_model_config import llm_model, code_model
 from poc_agno.mrcarbs.tool.carb_calc_tool import carb_calculator_tool
 from poc_agno.mrcarbs.tool.food_search_tool import get_food_carbs
 from poc_agno.utils.load_instructions import load_yaml_instructions
+
+
+class FoodCarbDetails(BaseModel):
+    name: str = Field(..., description="Food name")
+    carbs_per_100g: float = Field(..., description="Carbs per 100g")
+    portion_weight_in_grams: float = Field(..., description="Portion's weight in grams")
+    total_carbs_for_portion: float = Field(..., description="Carbs per given weight")
+
 
 food_search_agent = Agent(
     agent_id="001_food_search",
@@ -26,6 +35,9 @@ food_search_agent = Agent(
     show_tool_calls=True,
     debug_mode=True,
     markdown=False,
+    use_json_mode=True,
+    parser_model=code_model,
+    response_model=FoodCarbDetails,
     goal="""
     To return a precise carbohydrate value (in grams) for any requested food item, using only the two 
     approved tools and adhering to the workflow defined below. No internal calculations, 
@@ -45,4 +57,4 @@ food_search_agent = Agent(
 
 if __name__ == "__main__":
     # pprint(food_search_agent.run("How many carbs are in a large size banana?"))
-    food_search_agent.print_response("How many carbs are in a banana?")
+    food_search_agent.print_response("How many carbs are in a 1 lb banana?")
