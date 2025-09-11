@@ -1,3 +1,4 @@
+from agno.debug import enable_debug_mode
 from agno.team import Team
 from pydantic import BaseModel, Field
 
@@ -6,6 +7,7 @@ from poc_agno.mrcarbs.agent.food_search.food_search_agent import food_search_age
 from poc_agno.mrcarbs.agent.recipie_search.recipie_search_agent import recipe_aggregator_agent
 from poc_agno.utils.load_instructions import load_yaml_instructions
 
+enable_debug_mode()
 
 class DishCarbInfo(BaseModel):
     dish: str = Field(..., description="Dish name")
@@ -32,7 +34,7 @@ agent_team = Team(
     # response_model=DishCarbInfo,
     show_tool_calls=True,
     markdown=False,
-    reasoning=True,
+    # reasoning=True,
     debug_mode=True,
     add_datetime_to_instructions=True,
     add_member_tools_to_system_message=True,

@@ -1,74 +1,155 @@
 agent:
+  id: 003_CarbPerServingCalculator
   name: 003_CarbPerServingCalculator
   purpose: |
-    Answer only food/carbs questions.  For a requested dish, obtain a reputable recipe,
-    look up the carbohydrate content of each ingredient, and compute the carbs per serving.
-    All heavy lifting is done by the two child agents; this agent simply orchestrates.
+    Compute the carbohydrate content **per serving** of a dish
+    the user wants.  The agent calls the recipe aggregator
+    (002_RecipeAggregator) and the nutrient finder (001_food_search)
+    and finally emits the result in the exact shape defined by
+    `output_schema`.
 
+  # ------------------------------------------------------------------
+  # Allowed tools – the planner will only use these.
   allowed_tools:
     - 002_RecipeAggregator
     - 001_food_search
 
+  # ------------------------------------------------------------------
+  # High‑level constraints that must never be broken.
   constraints:
-    - Respond only to food‑and‑carb queries; other queries → `{}`.
-    - Do not invent or hallucinate ingredient names, quantities, units, or carb values.
-    - All carb calculations must be performed via 001_food_search (which internally calls carb_calculator_tool).
-    - Final response must be a JSON object containing exactly the fields in `output_schema`.
+    # The planner will *only* issue a tool call if the previous step
+    # produced exactly the keys that the next step expects.
+    - All tool outputs must be assigned to variables whose names
+      match the keys listed in the following steps.
+    - The recipe aggregator (002_RecipeAggregator) returns a dictionary with the keys: |
+        recipe_name   (string)
+        servings      (number)
+        ingredients   (list of { name: string, quantity: number, unit: string })
+        summary       (string)
+    - The food‑search tool (001_food_search) returns a single key
+      `carbs` – grams of carbohydrates for the supplied query.
 
+  # ------------------------------------------------------------------
+  # The final JSON that the planner must emit.
   output_schema:
-    dish: string                # recipe title
-    servings: integer           # servings from the chosen recipe
-    carbs_per_serving_g: number # total carb grams per serving, rounded to 2 decimals
+    type: object
+    properties:
+      dish:
+        type: string
+      servings:
+        type: number
+      ingredients:
+        type: array
+        items:
+          type: object
+          properties:
+            name:
+              type: string
+            quantity:
+              type: number
+            unit:
+              type: string
+      cooking_summary:
+        type: string
+    required: [dish, servings, ingredients, cooking_summary]
 
+# ──────────────────────────────────────────────────────────────────────
+#  Steps – the sequence of actions the planner will carry out.
+# ──────────────────────────────────────────────────────────────────────
 steps:
-  - step: aggregate
+  # ------------------------------------------------------------------
+  - name: aggregate
     description: |
-      Call 002_RecipeAggregator once with the dish name supplied by the user.
-    call: 002_RecipeAggregator
-    inputs:
-      - from: query
-        to: dish_name
-    rules:
-      - Accept the structured output that the aggregator returns:
-          • dish (title)
-          • servings
-          • ingredients  (list of {name, quantity, unit, quality})
-          • cooking_summary
+      Ask 002_RecipeAggregator for the recipe that matches the
+      dish name provided by the user.  The aggregator returns a
+      RecipeResponse dictionary containing:
+        recipe_name   – the dish’s canonical name
+        servings      – how many servings the recipe yields
+        ingredients   – a list of {name, quantity, unit}
+        summary       – a textual cooking summary
+    call:
+      agent: 002_RecipeAggregator
+      arguments:
+        recipe_name: "{{ input.dish_name }}"
+    output:
+      # Store the *raw* response; the next step will pick the keys out of it.
+      aggregate_result: "{{ output }}"
 
-  - step: lookup_ingredient_carbs
+  # ------------------------------------------------------------------
+  - name: transform
     description: |
-      For every ingredient in the aggregator’s ingredient list, build a query string
-      like `"Carbs in {quantity} {unit} {ingredient_name}"` and call 001_food_search.
-      Collect the returned carb value (grams) for the exact weight supplied.
-    inputs:
-      - from: aggregate.ingredients
-        to: ingredient_queries
-    rules:
-      - If an ingredient unit is not a weight (cup, tbsp, etc.) let 001_food_search handle
-        its internal conversion rules.
-      - Sum the carb values returned by 001_food_search (grams).
+      Map the keys returned by the aggregator to the names expected by
+      the following step.  This removes any drift.
+    input:
+      aggregate_result: dict
+    output:
+      dish: "{{ aggregate_result.recipe_name }}"
+      servings: "{{ aggregate_result.servings }}"
+      ingredients: "{{ aggregate_result.ingredients }}"
+      cooking_summary: "{{ aggregate_result.summary }}"
 
-  - step: compute_per_serving
+  # ------------------------------------------------------------------
+  - name: lookup_ingredient_carbs
     description: |
-      TotalCarbs = sum of ingredient carbs (grams)  
-      CarbsPerServing = TotalCarbs / servings (from the parsed recipe)  
-      Round to 2 decimal places.
+      For every ingredient in `ingredients` (a list of objects with
+      `name`, `quantity`, `unit`), construct a query string of the
+      form:
+        "{{ name }}: {{ quantity }} {{ unit }}"
+      Call 001_food_search with that string.  The tool returns a
+      JSON containing a single key `carbs` (grams).  Sum all returned
+      carb values to obtain the total carbohydrate content of the dish.
+    input:
+      dish: string
+      servings: number
+      ingredients: list
+      cooking_summary: string
+    output:
+      total_carbs: number
     rules:
-      - Use the servings count from the aggregator.
-      - No further unit conversion needed.
+      # Initialise a running total.
+      - total_carbs = 0
+      # Iterate over each ingredient.
+      - for each ing in ingredients:
+          # Build the query string.
+          query = {ing.name} {ing.quantity} {ing.unit}
+          # Call the nutrient‑finder tool.
+          result = call 001_food_search(query)
+          # Accumulate the returned carbs.
+          total_carbs += result.carbs
 
-  - step: produce_output
+  # ------------------------------------------------------------------
+  - name: compute_per_serving
     description: |
-      Return a JSON object that matches `output_schema`.  
-      Example:
-      ```json
-      {
-        "dish": "Spaghetti Bolognese",
-        "servings": 4,
-        "carbs_per_serving_g": 45.27
-      }
-      ```
-    output_schema: ${agent.output_schema}
+      Divide the summed carbohydrate total by the number of servings
+      to obtain grams of carbs per single serving.
+    input:
+      total_carbs: number
+      servings: number
+    output:
+      carbs_per_serving: number
     rules:
-      - No explanatory text, logs, or extraneous keys.
+      - carbs_per_serving = total_carbs / servings
 
+  # ------------------------------------------------------------------
+  - name: produce_output
+    description: |
+      Emit the final JSON that matches the agent’s `output_schema`.
+      The `ingredients` list in the output is the same list that the
+      aggregator returned – you can strip or enrich it if you wish,
+      but keeping it unchanged is the safest choice.
+    input:
+      dish: string
+      servings: number
+      carbs_per_serving: number
+      # These two inputs are passed from `transform`.
+      ingredients: list
+      cooking_summary: string
+    output:
+      dish: "{{ input.dish }}"
+      servings: "{{ input.servings }}"
+      ingredients: "{{ input.ingredients }}"
+      cooking_summary: "{{ input.cooking_summary }}"
+      # The planner expects the key name exactly as declared in
+      # `output_schema`.  Use the same variable name that was
+      # produced in the preceding step (`carbs_per_serving`).
+      carbs_per_serving: "{{ input.carbs_per_serving }}"
